@@ -69,5 +69,5 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
-          args: --timeout=10m --enable=errcheck,govet,ineffassign,staticcheck,unused,bodyclose,contextcheck,cyclop,dupl,gosec,misspell,revive,gofmt,goimports
+          version: v2.3.1
+          args: --timeout=10m

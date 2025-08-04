@@ -1,4 +1,4 @@
-version: 2
+version: "2"
 
 run:
   timeout: 10m
@@ -20,23 +20,16 @@ linters:
   disable:
     - cyclop # Disabled due to complex test functions and config parsing
 
-linters-settings:
-  cyclop:
-    max-complexity: 25 # Allow higher complexity for configuration parsing and complex test functions
-  revive:
+  settings:
+    revive:
+      rules:
+        - name: indent-error-flow
+        - name: unused-parameter
+        - name: var-naming
+
+  exclusions:
     rules:
-      - name: indent-error-flow
-      - name: unused-parameter
-      - name: var-naming
-
-issues:
-  exclude-rules:
-    # Allow higher complexity in test files
-    - path: ".*_test\\.go"
-      linters:
-        - cyclop
-
-output:
-  format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
+      # Allow higher complexity in test files
+      - path: ".*_test\\.go"
+        linters:
+          - cyclop
