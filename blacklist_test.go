@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -451,15 +452,21 @@ func TestRedisFailure(t *testing.T) {
 		logger: zap.NewNop(),
 	}
 
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	nextHandler := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(200)
 		w.Write([]byte(`{"status":"ok"}`))
+		return nil
 	})
 
-	// This should not provision properly due to Redis failure
-	// but in a real scenario with fail_open=true, it should continue
-	// For this test, we're testing the ServeHTTP behavior directly
+	// Test that the middleware handles Redis failures gracefully when fail_open is true
+	// The request should continue to the next handler
+	err = jb.ServeHTTP(w, req, nextHandler)
+	if err != nil {
+		t.Errorf("ServeHTTP should not return error when fail_open=true, got: %v", err)
+	}
 
-	// The middleware should handle Redis failures gracefully
-	// when fail_open is true
+	// Should get successful response from next handler despite Redis failure
+	if w.Code != 200 {
+		t.Errorf("Expected status 200 with fail_open=true, got %d", w.Code)
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
+	"go.uber.org/zap"
 )
 
 // TestIntegrationWithExistingSetup tests integration with the existing Caddy setup
@@ -276,7 +277,7 @@ func TestWebappBlacklistPatterns(t *testing.T) {
 			}
 
 			// Verify the pattern is detected correctly
-			redis, err := NewRedisClient(testRedis.addr, "", 15, nil)
+			redis, err := NewRedisClient(testRedis.addr, "", 15, zap.NewNop())
 			if err != nil {
 				t.Fatalf("Failed to create Redis client: %v", err)
 			}

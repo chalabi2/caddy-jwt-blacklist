@@ -43,6 +43,11 @@ func NewRedisClient(addr, password string, db int, logger *zap.Logger) (*RedisCl
 func (rc *RedisClient) IsBlacklisted(ctx context.Context, apiKeyID string, prefix string) (bool, error) {
 	key := fmt.Sprintf("%s%s", prefix, apiKeyID)
 
+	// Handle case where Redis client is not properly initialized
+	if rc.client == nil {
+		return false, fmt.Errorf("Redis client not initialized")
+	}
+
 	exists, err := rc.client.Exists(ctx, key).Result()
 	if err != nil {
 		rc.logger.Error("Redis blacklist check failed",
