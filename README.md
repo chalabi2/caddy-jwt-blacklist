@@ -1,6 +1,6 @@
 # Caddy JWT Blacklist Plugin
 
-[![codecov](https://codecov.io/gh/chalabi2/caddy-jwt-blacklist/graph/badge.svg)](https://codecov.io/gh/chalabi2/caddy-jwt-blacklist)
+[![codecov](https://codecov.io/gh/chalabi2/caddy-jwt-blacklist/graph/badge.svg?token=LSORQKOL2R)](https://codecov.io/gh/chalabi2/caddy-jwt-blacklist)
 [![Go Report Card](https://goreportcard.com/badge/github.com/chalabi2/caddy-jwt-blacklist)](https://goreportcard.com/report/github.com/chalabi2/caddy-jwt-blacklist)
 [![Go Reference](https://pkg.go.dev/badge/github.com/chalabi2/caddy-jwt-blacklist.svg)](https://pkg.go.dev/github.com/chalabi2/caddy-jwt-blacklist)
 

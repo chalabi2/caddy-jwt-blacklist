@@ -67,7 +67,8 @@ jobs:
           file: ./coverage.txt
           flags: unittests
           name: codecov-go${{ matrix.go-version }}
-          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
