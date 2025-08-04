@@ -51,7 +51,7 @@ func setupTestRedis() (*testRedisContainer, error) {
 func (tr *testRedisContainer) cleanup() {
 	if tr.client != nil {
 		tr.client.FlushDB(context.Background())
-		tr.client.Close()
+		_ = tr.client.Close()
 	}
 }
 
@@ -103,7 +103,7 @@ func TestJWTBlacklistMiddleware(t *testing.T) {
 	if err := jb.Provision(ctx); err != nil {
 		t.Fatalf("Failed to provision middleware: %v", err)
 	}
-	defer jb.Cleanup()
+	defer func() { _ = jb.Cleanup() }()
 
 	tests := []struct {
 		name           string
@@ -205,7 +205,7 @@ func TestJWTBlacklistMiddleware(t *testing.T) {
 			// Create next handler that returns 200 OK
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(200)
-				w.Write([]byte(`{"status":"ok"}`))
+				_, _ = w.Write([]byte(`{"status":"ok"}`))
 			})
 
 			// Execute the middleware
@@ -432,7 +432,7 @@ func TestRedisFailure(t *testing.T) {
 		// For this test, we'll simulate the scenario in the middleware
 		t.Log("Redis connection failed as expected")
 	} else {
-		redis.Close()
+		_ = redis.Close()
 		t.Skip("Redis available on port 9999 - skipping failure test")
 	}
 
@@ -454,7 +454,7 @@ func TestRedisFailure(t *testing.T) {
 
 	nextHandler := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(200)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 		return nil
 	})
 

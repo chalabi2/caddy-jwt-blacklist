@@ -45,7 +45,7 @@ func TestIntegrationWithExistingSetup(t *testing.T) {
 	if err := jb.Provision(ctx); err != nil {
 		t.Fatalf("Failed to provision middleware: %v", err)
 	}
-	defer jb.Cleanup()
+	defer func() { _ = jb.Cleanup() }()
 
 	// Test scenarios that match the webapp behavior
 	scenarios := []struct {
@@ -182,7 +182,7 @@ func TestIntegrationWithExistingSetup(t *testing.T) {
 								"user_id":   scenario.userID,
 								"tier":      scenario.tier,
 							}
-							json.NewEncoder(w).Encode(response)
+							_ = json.NewEncoder(w).Encode(response)
 						})
 
 						// Execute middleware
@@ -281,7 +281,7 @@ func TestWebappBlacklistPatterns(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create Redis client: %v", err)
 			}
-			defer redis.Close()
+			defer func() { _ = redis.Close() }()
 
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 			defer cancel()
@@ -357,7 +357,7 @@ func TestRateLimitingIntegration(t *testing.T) {
 			if err := jb.Provision(ctx); err != nil {
 				t.Fatalf("Failed to provision middleware: %v", err)
 			}
-			defer jb.Cleanup()
+			defer func() { _ = jb.Cleanup() }()
 
 			// Generate token
 			token, err := generateTestJWT(apiKeyID, userID, tier, "api_access", jwtSecret)

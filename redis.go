@@ -45,7 +45,7 @@ func (rc *RedisClient) IsBlacklisted(ctx context.Context, apiKeyID string, prefi
 
 	// Handle case where Redis client is not properly initialized
 	if rc.client == nil {
-		return false, fmt.Errorf("Redis client not initialized")
+		return false, fmt.Errorf("redis client not initialized")
 	}
 
 	exists, err := rc.client.Exists(ctx, key).Result()
