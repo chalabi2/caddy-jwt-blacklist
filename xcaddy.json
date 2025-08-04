@@ -1,0 +1,36 @@
+{
+  "name": "caddy-jwt-blacklist",
+  "version": "0.1.0",
+  "description": "JWT-based API key blacklist middleware for Caddy with Redis backend",
+  "author": "chalabi",
+  "homepage": "https://github.com/chalabi2/caddy-jwt-blacklist",
+  "repository": "https://github.com/chalabi2/caddy-jwt-blacklist",
+  "license": "MIT",
+  "keywords": [
+    "caddy",
+    "plugin",
+    "jwt",
+    "blacklist",
+    "redis",
+    "authentication",
+    "middleware",
+    "api-keys"
+  ],
+  "caddy": {
+    "module_id": "http.handlers.jwt_blacklist",
+    "go_module": "github.com/chalabi2/caddy-jwt-blacklist",
+    "directive": "jwt_blacklist"
+  },
+  "compatibility": {
+    "caddy": ">=2.8.0",
+    "go": ">=1.21"
+  },
+  "features": [
+    "Redis-based JWT blacklist checking",
+    "Multiple token source support",
+    "Fail-open behavior for reliability",
+    "Detailed request logging",
+    "Integration with existing JWT auth",
+    "Low latency operations (~0.5ms)"
+  ]
+}

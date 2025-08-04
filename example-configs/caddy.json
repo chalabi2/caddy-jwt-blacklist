@@ -1,0 +1,243 @@
+{
+  "admin": {
+    "listen": "localhost:2019"
+  },
+  "logging": {
+    "logs": {
+      "default": {
+        "writer": {
+          "output": "stdout"
+        },
+        "encoder": {
+          "format": "json"
+        },
+        "level": "INFO"
+      }
+    }
+  },
+  "apps": {
+    "http": {
+      "http_port": 8080,
+      "https_port": 8443,
+      "servers": {
+        "srv0": {
+          "listen": [":8080"],
+          "routes": [
+            {
+              "match": [
+                {
+                  "host": ["localhost"],
+                  "path": ["/api*"]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "jwt_blacklist",
+                  "config": {
+                    "redis_addr": "{env.REDIS_URL}",
+                    "redis_password": "{env.REDIS_PASSWORD}",
+                    "redis_db": 0,
+                    "jwt_secret": "{env.JWT_SECRET}",
+                    "blacklist_prefix": "BLACKLIST:key:",
+                    "fail_open": true,
+                    "timeout": "50ms",
+                    "log_blocked": true
+                  }
+                },
+                {
+                  "handler": "jwtauth",
+                  "sign_key": "{env.JWT_SECRET}",
+                  "sign_alg": "HS256",
+                  "from_query": ["api_key", "access_token", "token"],
+                  "from_header": ["Authorization", "X-Api-Token", "X-API-Key"],
+                  "from_cookies": ["session_token"],
+                  "user_claims": ["sub", "jti", "uid", "user_id"],
+                  "meta_claims": ["tier", "scope"]
+                },
+                {
+                  "handler": "headers",
+                  "response": {
+                    "set": {
+                      "X-User-ID": ["{http.auth.user.id}"],
+                      "X-User-Tier": ["{http.auth.user.tier}"],
+                      "X-User-Scope": ["{http.auth.user.scope}"],
+                      "Access-Control-Allow-Origin": ["*"],
+                      "Access-Control-Allow-Methods": ["GET, POST, OPTIONS"],
+                      "Access-Control-Allow-Headers": [
+                        "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key"
+                      ],
+                      "Access-Control-Expose-Headers": [
+                        "X-User-ID, X-User-Tier"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "match": [{ "path": ["/api/status"] }],
+                      "handle": [
+                        {
+                          "handler": "static_response",
+                          "body": "{\n  \"status\": \"ok\",\n  \"service\": \"jwt-blacklist-demo\",\n  \"timestamp\": \"{time.now.unix}\",\n  \"user_id\": \"{http.auth.user.id}\",\n  \"tier\": \"{http.auth.user.tier}\",\n  \"scope\": \"{http.auth.user.scope}\"\n}",
+                          "headers": {
+                            "Content-Type": ["application/json"]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "match": [{ "path": ["/api/test"] }],
+                      "handle": [
+                        {
+                          "handler": "static_response",
+                          "body": "{\n  \"message\": \"Authentication successful!\",\n  \"user_id\": \"{http.auth.user.id}\",\n  \"tier\": \"{http.auth.user.tier}\",\n  \"api_key_id\": \"{http.auth.user.jti}\"\n}",
+                          "headers": {
+                            "Content-Type": ["application/json"]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "static_response",
+                          "body": "{\"error\": \"not_found\", \"message\": \"API endpoint not found\"}",
+                          "status_code": 404,
+                          "headers": {
+                            "Content-Type": ["application/json"]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "match": [
+                {
+                  "host": ["localhost"],
+                  "method": ["OPTIONS"]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "headers",
+                  "response": {
+                    "set": {
+                      "Access-Control-Allow-Origin": ["*"],
+                      "Access-Control-Allow-Methods": ["GET, POST, OPTIONS"],
+                      "Access-Control-Allow-Headers": [
+                        "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key"
+                      ],
+                      "Access-Control-Max-Age": ["86400"]
+                    }
+                  }
+                },
+                {
+                  "handler": "static_response",
+                  "body": "",
+                  "status_code": 204
+                }
+              ]
+            },
+            {
+              "match": [{ "host": ["localhost"] }],
+              "handle": [
+                {
+                  "handler": "headers",
+                  "response": {
+                    "set": {
+                      "Access-Control-Allow-Origin": ["*"],
+                      "Access-Control-Allow-Methods": ["GET, POST, OPTIONS"],
+                      "Access-Control-Allow-Headers": [
+                        "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key"
+                      ],
+                      "Access-Control-Expose-Headers": [
+                        "X-User-ID, X-User-Tier"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "handler": "static_response",
+                  "body": "Welcome! Try these endpoints:\n- GET / (public)\n- GET /api/status (requires JWT)\n- GET /api/test (requires JWT)\n\nSet these environment variables:\n- REDIS_URL=localhost:6379\n- JWT_SECRET=your-secret-key"
+                }
+              ]
+            }
+          ],
+          "errors": {
+            "routes": [
+              {
+                "match": [
+                  {
+                    "expression": "{http.error.status_code} == 401 && {http.error.type} == \"api_key_blacklisted\""
+                  }
+                ],
+                "handle": [
+                  {
+                    "handler": "headers",
+                    "response": {
+                      "set": {
+                        "X-Error-Type": ["api_key_blacklisted"],
+                        "WWW-Authenticate": ["Bearer"]
+                      }
+                    }
+                  },
+                  {
+                    "handler": "static_response",
+                    "body": "{\n  \"error\": \"unauthorized\",\n  \"message\": \"API key has been disabled due to subscription changes\",\n  \"code\": 401,\n  \"details\": \"Please check your subscription status or generate a new API key\"\n}",
+                    "status_code": 401,
+                    "headers": {
+                      "Content-Type": ["application/json"]
+                    }
+                  }
+                ]
+              },
+              {
+                "match": [
+                  {
+                    "expression": "{http.error.status_code} == 401"
+                  }
+                ],
+                "handle": [
+                  {
+                    "handler": "headers",
+                    "response": {
+                      "set": {
+                        "X-Error-Type": ["authentication_failed"],
+                        "WWW-Authenticate": ["Bearer"]
+                      }
+                    }
+                  },
+                  {
+                    "handler": "static_response",
+                    "body": "{\n  \"error\": \"unauthorized\",\n  \"message\": \"Invalid or missing API key\",\n  \"code\": 401\n}",
+                    "status_code": 401,
+                    "headers": {
+                      "Content-Type": ["application/json"]
+                    }
+                  }
+                ]
+              },
+              {
+                "handle": [
+                  {
+                    "handler": "static_response",
+                    "body": "{\n  \"error\": \"{http.error.status_code}\",\n  \"message\": \"{http.error.status_text}\"\n}",
+                    "status_code": "{http.error.status_code}",
+                    "headers": {
+                      "Content-Type": ["application/json"]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
