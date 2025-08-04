@@ -59,7 +59,7 @@ func (tr *testRedisContainer) cleanup() {
 func generateTestJWT(apiKeyID, userID, tier, scope, secret string) (string, error) {
 	claims := &Claims{
 		UserID:   userID,
-		ApiKeyID: apiKeyID,
+		APIKeyID: apiKeyID,
 		Tier:     tier,
 		Scope:    scope,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -203,7 +203,7 @@ func TestJWTBlacklistMiddleware(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			// Create next handler that returns 200 OK
-			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(200)
 				_, _ = w.Write([]byte(`{"status":"ok"}`))
 			})
@@ -296,7 +296,7 @@ func TestTokenExtraction(t *testing.T) {
 		},
 		{
 			name: "No token",
-			setupReq: func(req *http.Request) {
+			setupReq: func(_ *http.Request) {
 				// No token setup
 			},
 			expected: "",
@@ -339,7 +339,7 @@ func TestJWTParsing(t *testing.T) {
 			name: "Valid token",
 			claims: &Claims{
 				UserID:   "user-123",
-				ApiKeyID: "api-key-456",
+				APIKeyID: "api-key-456",
 				Tier:     "BASIC",
 				Scope:    "api_access",
 			},
@@ -361,7 +361,7 @@ func TestJWTParsing(t *testing.T) {
 				UserID: "user-123",
 				Tier:   "BASIC",
 				Scope:  "api_access",
-				// ApiKeyID missing
+				// APIKeyID missing
 			},
 			expectErr: true,
 		},
@@ -401,8 +401,8 @@ func TestJWTParsing(t *testing.T) {
 				t.Errorf("Expected UserID %s, got %s", tt.claims.UserID, claims.UserID)
 			}
 
-			if claims.ApiKeyID != tt.claims.ApiKeyID {
-				t.Errorf("Expected ApiKeyID %s, got %s", tt.claims.ApiKeyID, claims.ApiKeyID)
+			if claims.APIKeyID != tt.claims.APIKeyID {
+				t.Errorf("Expected ApiKeyID %s, got %s", tt.claims.APIKeyID, claims.APIKeyID)
 			}
 		})
 	}
@@ -452,7 +452,7 @@ func TestRedisFailure(t *testing.T) {
 		logger: zap.NewNop(),
 	}
 
-	nextHandler := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+	nextHandler := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(200)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 		return nil

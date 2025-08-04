@@ -173,7 +173,7 @@ func TestIntegrationWithExistingSetup(t *testing.T) {
 						w := httptest.NewRecorder()
 
 						// Mock next handler (simulating jwtauth + rate_limit + reverse_proxy)
-						nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 							w.WriteHeader(200)
 							response := map[string]interface{}{
 								"status":    "ok",
@@ -370,7 +370,7 @@ func TestRateLimitingIntegration(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			// Mock rate limiting handler that should NOT be reached
-			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				// If we reach here, the blacklist check failed
 				t.Error("Rate limiting handler should not be reached for blacklisted tokens")
 				w.WriteHeader(200)

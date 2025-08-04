@@ -12,7 +12,7 @@ import (
 // Claims represents the JWT claims we're interested in
 type Claims struct {
 	UserID   string `json:"sub"`
-	ApiKeyID string `json:"jti"` // This is the API key ID we check against blacklist
+	APIKeyID string `json:"jti"` // This is the API key ID we check against blacklist
 	Tier     string `json:"tier"`
 	Scope    string `json:"scope"`
 	jwt.RegisteredClaims
@@ -88,7 +88,7 @@ func parseJWT(tokenString, secret string) (*Claims, error) {
 	}
 
 	// Validate required claims
-	if claims.ApiKeyID == "" {
+	if claims.APIKeyID == "" {
 		return nil, errors.New("missing jti (API key ID) claim")
 	}
 

@@ -1,3 +1,4 @@
+// Package jwtblacklist provides a Caddy middleware for JWT token blacklist validation using Redis.
 package jwtblacklist
 
 import (
@@ -106,35 +107,34 @@ func (jb *JWTBlacklist) ServeHTTP(w http.ResponseWriter, r *http.Request, next c
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(jb.Config.Timeout))
 	defer cancel()
 
-	isBlacklisted, err := jb.redis.IsBlacklisted(ctx, claims.ApiKeyID, jb.Config.BlacklistPrefix)
+	isBlacklisted, err := jb.redis.IsBlacklisted(ctx, claims.APIKeyID, jb.Config.BlacklistPrefix)
 
 	if err != nil {
 		if jb.Config.FailOpen {
 			// Log the error but continue processing
 			jb.logger.Warn("Redis blacklist check failed, failing open",
-				zap.String("api_key_id", claims.ApiKeyID),
+				zap.String("api_key_id", claims.APIKeyID),
 				zap.String("user_id", claims.UserID),
 				zap.String("client_ip", getClientIP(r)),
 				zap.Error(err))
 			return next.ServeHTTP(w, r)
-		} else {
-			// Fail closed - return internal server error
-			jb.logger.Error("Redis blacklist check failed, failing closed",
-				zap.String("api_key_id", claims.ApiKeyID),
-				zap.String("user_id", claims.UserID),
-				zap.String("client_ip", getClientIP(r)),
-				zap.Error(err))
-			return jb.respondError(w, http.StatusInternalServerError, "internal_error", "Blacklist check failed")
 		}
+		// Fail closed - return internal server error
+		jb.logger.Error("Redis blacklist check failed, failing closed",
+			zap.String("api_key_id", claims.APIKeyID),
+			zap.String("user_id", claims.UserID),
+			zap.String("client_ip", getClientIP(r)),
+			zap.Error(err))
+		return jb.respondError(w, http.StatusInternalServerError, "internal_error", "Blacklist check failed")
 	}
 
 	if isBlacklisted {
 		// Get additional blacklist info for logging
-		reason, ttl, _ := jb.redis.GetBlacklistInfo(ctx, claims.ApiKeyID, jb.Config.BlacklistPrefix)
+		reason, ttl, _ := jb.redis.GetBlacklistInfo(ctx, claims.APIKeyID, jb.Config.BlacklistPrefix)
 
 		if jb.Config.LogBlocked {
 			jb.logger.Info("Blocked blacklisted API key",
-				zap.String("api_key_id", claims.ApiKeyID),
+				zap.String("api_key_id", claims.APIKeyID),
 				zap.String("user_id", claims.UserID),
 				zap.String("client_ip", getClientIP(r)),
 				zap.String("reason", reason),
