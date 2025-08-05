@@ -1,0 +1,125 @@
+{
+	# Global options
+	email chalabi@chandrastation.com
+	admin localhost:2019
+
+	# Enable Prometheus support
+	metrics
+
+	# Global JSON access log
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+}
+
+# PUBLIC (no auth)
+nodes.chandrastation.com {
+	# Add TLS config as needed
+
+	route {
+		# Handle CORS preflight requests
+		@options method OPTIONS
+		handle @options {
+			header {
+				Access-Control-Allow-Origin *
+				Access-Control-Allow-Methods "GET, POST, OPTIONS"
+				Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+				Access-Control-Max-Age 86400
+			}
+			respond "" 204
+		}
+
+		handle /status {
+			respond `{"status":"ok","service":"chandra-station-public","timestamp":"{time.now.unix}"}`
+		}
+
+		handle {
+			respond `{"error":"not_found","message":"Endpoint not found"}` 404
+		}
+	}
+}
+
+# PRIVATE (JWT auth with blacklist)
+api.chandrastation.com {
+	# Add TLS config as needed
+
+	route {
+		# Handle CORS preflight requests FIRST (before JWT auth)
+		@options method OPTIONS
+		handle @options {
+			header {
+				Access-Control-Allow-Origin *
+				Access-Control-Allow-Methods "GET, POST, OPTIONS"
+				Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key"
+				Access-Control-Max-Age 86400
+			}
+			respond "" 204
+		}
+
+		# Step 1: JWT Blacklist Check (before authentication)
+		jwt_blacklist {
+			redis_addr {env.REDIS_URL}
+			redis_password {env.REDIS_PASSWORD}
+			redis_db 0
+			jwt_secret {env.JWT_SECRET}
+			blacklist_prefix "BLACKLIST:key:"
+			fail_open true
+			timeout 50ms
+			log_blocked true
+		}
+
+		# Step 2: JWT Authentication
+		jwtauth {
+			sign_key {env.JWT_SECRET}
+			sign_alg HS256
+			from_query api_key access_token token
+			from_header Authorization X-Api-Token X-API-Key
+			from_cookies session_token
+			user_claims sub jti uid user_id
+			meta_claims "tier" "scope"
+		}
+
+		# Add user info to headers
+		header {
+			X-User-ID {http.auth.user.id}
+			X-User-Tier {http.auth.user.tier}
+			X-User-Scope {http.auth.user.scope}
+		}
+
+		handle /status {
+			respond `{"status":"ok","service":"chandra-station-private","timestamp":"{time.now.unix}","user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}","scope":"{http.auth.user.scope}"}`
+		}
+
+		handle {
+			respond `{"error":"not_found","message":"Endpoint not found"}` 404
+		}
+	}
+
+	handle_errors {
+		@blacklist_error expression `{http.error.status_code} == 401 && {http.error.message} contains "blacklisted"`
+		header @blacklist_error {
+			X-Error-Type "api_key_blacklisted"
+			WWW-Authenticate "Bearer"
+		}
+		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled due to subscription changes","code":401,"details":"Please check your subscription status or generate a new API key"}` 401
+
+		@auth_error expression `{http.error.status_code} == 401`
+		header @auth_error {
+			X-Error-Type "authentication_failed"
+			WWW-Authenticate "Bearer"
+		}
+		respond @auth_error `{"error":"unauthorized","message":"Invalid or missing API key","code":401}` 401
+
+		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}` {http.error.status_code}
+	}
+
+	# Apply CORS headers to all other requests
+	header {
+		Access-Control-Allow-Origin *
+		Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key"
+		Access-Control-Expose-Headers "X-User-ID, X-User-Tier"
+	}
+}
