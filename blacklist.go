@@ -46,12 +46,29 @@ func (jb *JWTBlacklist) Provision(ctx caddy.Context) error {
 	jb.Config.RedisPassword = repl.ReplaceAll(jb.Config.RedisPassword, "")
 	jb.Config.JWTSecret = repl.ReplaceAll(jb.Config.JWTSecret, "")
 
-	// Initialize Redis client
+	// Process TLS config environment variables if present
+	if jb.Config.RedisTLS != nil {
+		if jb.Config.RedisTLS.ServerName != "" {
+			jb.Config.RedisTLS.ServerName = repl.ReplaceAll(jb.Config.RedisTLS.ServerName, "")
+		}
+		if jb.Config.RedisTLS.CertFile != "" {
+			jb.Config.RedisTLS.CertFile = repl.ReplaceAll(jb.Config.RedisTLS.CertFile, "")
+		}
+		if jb.Config.RedisTLS.KeyFile != "" {
+			jb.Config.RedisTLS.KeyFile = repl.ReplaceAll(jb.Config.RedisTLS.KeyFile, "")
+		}
+		if jb.Config.RedisTLS.CAFile != "" {
+			jb.Config.RedisTLS.CAFile = repl.ReplaceAll(jb.Config.RedisTLS.CAFile, "")
+		}
+	}
+
+	// Initialize Redis client with optional TLS support
 	var err error
 	jb.redis, err = NewRedisClient(
 		jb.Config.RedisAddr,
 		jb.Config.RedisPassword,
 		jb.Config.RedisDB,
+		jb.Config.RedisTLS, // Pass TLS config (nil for non-TLS)
 		jb.logger,
 	)
 	if err != nil {
@@ -64,6 +81,7 @@ func (jb *JWTBlacklist) Provision(ctx caddy.Context) error {
 		zap.String("blacklist_prefix", jb.Config.BlacklistPrefix),
 		zap.Duration("timeout", time.Duration(jb.Config.Timeout)),
 		zap.Bool("fail_open", jb.Config.FailOpen),
+		zap.Bool("tls_enabled", jb.Config.RedisTLS != nil && jb.Config.RedisTLS.Enabled),
 	)
 
 	return nil

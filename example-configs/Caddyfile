@@ -1,156 +1,56 @@
+# Basic JWT Blacklist Configuration
+# Shows JWT blacklist functionality with both local and TLS Redis support
+
 {
-    # Global options
-    email your-email@example.com
-    
-    # CRITICAL: Plugin execution order
-    order jwt_blacklist before jwtauth
-    order jwtauth before rate_limit
-    order rate_limit before reverse_proxy
-
-    # Admin interface for metrics and management
-    admin localhost:2019
-    
-    # Enable metrics for monitoring
-    metrics
-
-    # Global JSON access log
-    log {
-        output stdout
-        format json
-        level INFO
-    }
+	admin localhost:2019
+	
+	log {
+		output stdout
+		format json
+		level INFO
+	}
 }
 
-# Test endpoint - no authentication required
+# Basic JWT blacklist example
 localhost:8080 {
-    respond "Hello! This is a public endpoint. Try /api for authenticated access."
-}
-
-# API endpoint with JWT blacklist + authentication
-localhost:8080 {
-    # Match API routes
-    @api path /api*
-
-    handle @api {
-        # Step 1: JWT Blacklist Check (blocks blacklisted API keys)
-        jwt_blacklist {
-            redis_addr {env.REDIS_URL}
-            redis_password {env.REDIS_PASSWORD}
-            redis_db 0
-            jwt_secret {env.JWT_SECRET}
-            blacklist_prefix "BLACKLIST:key:"
-            fail_open true
-            timeout 50ms
-            log_blocked true
-        }
-
-        # Step 2: JWT Authentication (validates token signature)
-        jwtauth {
-            sign_key {env.JWT_SECRET}
-            sign_alg HS256
-            from_query api_key access_token token
-            from_header Authorization X-Api-Token X-API-Key
-            from_cookies session_token
-            user_claims sub jti uid user_id
-            meta_claims "tier" "scope"
-        }
-
-        # Step 3: Add user headers and respond
-        header {
-            X-User-ID {http.auth.user.id}
-            X-User-Tier {http.auth.user.tier}
-            X-User-Scope {http.auth.user.scope}
-        }
-
-        # API endpoints
-        handle /api/status {
-            respond `{
-                "status": "ok",
-                "service": "jwt-blacklist-demo",
-                "timestamp": "{time.now.unix}",
-                "user_id": "{http.auth.user.id}",
-                "tier": "{http.auth.user.tier}",
-                "scope": "{http.auth.user.scope}"
-            }`
-        }
-
-        handle /api/test {
-            respond `{
-                "message": "Authentication successful!",
-                "user_id": "{http.auth.user.id}",
-                "tier": "{http.auth.user.tier}",
-                "api_key_id": "{http.auth.user.jti}"
-            }`
-        }
-
-        handle {
-            respond `{"error": "not_found", "message": "API endpoint not found"}` 404
-        }
-    }
-
-    # Handle CORS preflight requests
-    @options method OPTIONS
-    handle @options {
-        header {
-            Access-Control-Allow-Origin *
-            Access-Control-Allow-Methods "GET, POST, OPTIONS"
-            Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key"
-            Access-Control-Max-Age 86400
-        }
-        respond "" 204
-    }
-
-    # Default response for non-API routes
-    handle {
-        respond "Welcome! Try these endpoints:
-- GET / (public)
-- GET /api/status (requires JWT)
-- GET /api/test (requires JWT)
-
-Set these environment variables:
-- REDIS_URL=localhost:6379
-- JWT_SECRET=your-secret-key"
-    }
-
-    # Error handling for authentication and blacklist failures
-    handle_errors {
-        # Blacklist-specific errors
-        @blacklist_error expression `{http.error.status_code} == 401 && {http.error.type} == "api_key_blacklisted"`
-        header @blacklist_error {
-            X-Error-Type "api_key_blacklisted"
-            WWW-Authenticate "Bearer"
-        }
-        respond @blacklist_error `{
-            "error": "unauthorized",
-            "message": "API key has been disabled due to subscription changes",
-            "code": 401,
-            "details": "Please check your subscription status or generate a new API key"
-        }` 401
-
-        # Standard auth errors
-        @auth_error expression `{http.error.status_code} == 401`
-        header @auth_error {
-            X-Error-Type "authentication_failed"
-            WWW-Authenticate "Bearer"
-        }
-        respond @auth_error `{
-            "error": "unauthorized",
-            "message": "Invalid or missing API key",
-            "code": 401
-        }` 401
-
-        # Default error response
-        respond `{
-            "error": "{http.error.status_code}",
-            "message": "{http.error.status_text}"
-        }` {http.error.status_code}
-    }
-
-    # Apply CORS headers to all responses
-    header {
-        Access-Control-Allow-Origin *
-        Access-Control-Allow-Methods "GET, POST, OPTIONS"
-        Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key"
-        Access-Control-Expose-Headers "X-User-ID, X-User-Tier"
-    }
+	route {
+		# JWT Blacklist middleware - works with both local and TLS Redis
+		jwt_blacklist {
+			redis_addr {env.REDIS_URL}        # e.g., localhost:6379 or redis-cloud.com:12345
+			redis_password {env.REDIS_PASSWORD}
+			redis_db 0
+			jwt_secret {env.JWT_SECRET}
+			blacklist_prefix "BLACKLIST:key:"
+			fail_open true
+			timeout 50ms
+			log_blocked true
+			
+			# Optional TLS configuration - uncomment for TLS Redis
+			# tls {
+			#     enabled true
+			#     min_version "1.2"
+			# }
+		}
+		
+		# Test endpoints
+		handle /health {
+			respond `{"status":"ok","service":"jwt-blacklist","timestamp":"{time.now.unix}"}`
+		}
+		
+		handle /api/* {
+			respond `{"message":"API access granted","path":"{uri}","timestamp":"{time.now.unix}"}`
+		}
+		
+		handle {
+			respond `{"message":"JWT Blacklist Test Server","endpoints":["/health","/api/*"]}`
+		}
+	}
+	
+	# Error handling for blacklisted tokens
+	handle_errors {
+		@blacklist_error expression `{http.error.status_code} == 401 && {http.error.message} contains "blacklisted"`
+		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled","code":401}` 401
+		
+		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}`
+	}
 }

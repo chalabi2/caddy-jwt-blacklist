@@ -2,7 +2,10 @@ package jwtblacklist
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,12 +18,21 @@ type RedisClient struct {
 	logger *zap.Logger
 }
 
-// NewRedisClient creates a new Redis client
-func NewRedisClient(addr, password string, db int, logger *zap.Logger) (*RedisClient, error) {
+// NewRedisClient creates a new Redis client with optional TLS support
+func NewRedisClient(addr, password string, db int, tlsConfig *TLSConfig, logger *zap.Logger) (*RedisClient, error) {
 	opts := &redis.Options{
 		Addr:     addr,
 		Password: password,
 		DB:       db,
+	}
+
+	// Configure TLS if provided
+	if tlsConfig != nil && tlsConfig.Enabled {
+		config, err := buildTLSConfig(tlsConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build TLS config: %w", err)
+		}
+		opts.TLSConfig = config
 	}
 
 	client := redis.NewClient(opts)
@@ -37,6 +49,63 @@ func NewRedisClient(addr, password string, db int, logger *zap.Logger) (*RedisCl
 		client: client,
 		logger: logger,
 	}, nil
+}
+
+// TLSConfig holds TLS configuration options
+type TLSConfig struct {
+	Enabled            bool   `json:"enabled,omitempty"`
+	InsecureSkipVerify bool   `json:"insecure_skip_verify,omitempty"`
+	ServerName         string `json:"server_name,omitempty"`
+	MinVersion         string `json:"min_version,omitempty"`
+	CertFile           string `json:"cert_file,omitempty"`
+	KeyFile            string `json:"key_file,omitempty"`
+	CAFile             string `json:"ca_file,omitempty"`
+}
+
+// buildTLSConfig creates a tls.Config from TLSConfig
+func buildTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		ServerName:         cfg.ServerName,
+	}
+
+	// Set minimum TLS version
+	switch cfg.MinVersion {
+	case "1.0":
+		tlsConfig.MinVersion = tls.VersionTLS10
+	case "1.1":
+		tlsConfig.MinVersion = tls.VersionTLS11
+	case "1.2":
+		tlsConfig.MinVersion = tls.VersionTLS12
+	case "1.3":
+		tlsConfig.MinVersion = tls.VersionTLS13
+	default:
+		tlsConfig.MinVersion = tls.VersionTLS12 // Default to TLS 1.2
+	}
+
+	// Load client certificate if provided
+	if cfg.CertFile != "" && cfg.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	// Load CA certificate if provided
+	if cfg.CAFile != "" {
+		caCert, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA file: %w", err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate")
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
+
+	return tlsConfig, nil
 }
 
 // IsBlacklisted checks if an API key is blacklisted

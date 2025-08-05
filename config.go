@@ -13,9 +13,10 @@ import (
 // Config holds the configuration for the JWT blacklist plugin
 type Config struct {
 	// Redis connection settings
-	RedisAddr     string `json:"redis_addr,omitempty"`
-	RedisPassword string `json:"redis_password,omitempty"`
-	RedisDB       int    `json:"redis_db,omitempty"`
+	RedisAddr     string     `json:"redis_addr,omitempty"`
+	RedisPassword string     `json:"redis_password,omitempty"`
+	RedisDB       int        `json:"redis_db,omitempty"`
+	RedisTLS      *TLSConfig `json:"redis_tls,omitempty"`
 
 	// JWT settings
 	JWTSecret string `json:"jwt_secret,omitempty"`
@@ -136,6 +137,59 @@ func (jb *JWTBlacklist) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return d.ArgErr()
 			}
 			config.LogBlocked = d.Val() == "true"
+
+		// TLS configuration block
+		case "tls":
+			tlsConfig := &TLSConfig{}
+			for d.NextBlock(1) {
+				switch d.Val() {
+				case "enabled":
+					if !d.NextArg() {
+						return d.ArgErr()
+					}
+					tlsConfig.Enabled = d.Val() == "true"
+
+				case "insecure_skip_verify":
+					if !d.NextArg() {
+						return d.ArgErr()
+					}
+					tlsConfig.InsecureSkipVerify = d.Val() == "true"
+
+				case "server_name":
+					if !d.NextArg() {
+						return d.ArgErr()
+					}
+					tlsConfig.ServerName = d.Val()
+
+				case "min_version":
+					if !d.NextArg() {
+						return d.ArgErr()
+					}
+					tlsConfig.MinVersion = d.Val()
+
+				case "cert_file":
+					if !d.NextArg() {
+						return d.ArgErr()
+					}
+					tlsConfig.CertFile = d.Val()
+
+				case "key_file":
+					if !d.NextArg() {
+						return d.ArgErr()
+					}
+					tlsConfig.KeyFile = d.Val()
+
+				case "ca_file":
+					if !d.NextArg() {
+						return d.ArgErr()
+					}
+					tlsConfig.CAFile = d.Val()
+
+				default:
+					return d.Errf("unknown TLS directive: %s", d.Val())
+				}
+			}
+			config.RedisTLS = tlsConfig
 
 		default:
 			return d.Errf("unknown directive: %s", d.Val())

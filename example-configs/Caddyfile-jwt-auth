@@ -1,12 +1,9 @@
+# JWT Authentication + Blacklist Integration
+# Shows how to use JWT blacklist with JWT authentication module
+
 {
-	# Global options
-	email chalabi@chandrastation.com
 	admin localhost:2019
-
-	# Enable Prometheus support
-	metrics
-
-	# Global JSON access log
+	
 	log {
 		output stdout
 		format json
@@ -14,39 +11,10 @@
 	}
 }
 
-# PUBLIC (no auth)
-nodes.chandrastation.com {
-	# Add TLS config as needed
-
+# Protected API with JWT auth + blacklist
+api.example.com {
 	route {
-		# Handle CORS preflight requests
-		@options method OPTIONS
-		handle @options {
-			header {
-				Access-Control-Allow-Origin *
-				Access-Control-Allow-Methods "GET, POST, OPTIONS"
-				Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-				Access-Control-Max-Age 86400
-			}
-			respond "" 204
-		}
-
-		handle /status {
-			respond `{"status":"ok","service":"chandra-station-public","timestamp":"{time.now.unix}"}`
-		}
-
-		handle {
-			respond `{"error":"not_found","message":"Endpoint not found"}` 404
-		}
-	}
-}
-
-# PRIVATE (JWT auth with blacklist)
-api.chandrastation.com {
-	# Add TLS config as needed
-
-	route {
-		# Handle CORS preflight requests FIRST (before JWT auth)
+		# Handle CORS preflight requests FIRST
 		@options method OPTIONS
 		handle @options {
 			header {
@@ -68,6 +36,13 @@ api.chandrastation.com {
 			fail_open true
 			timeout 50ms
 			log_blocked true
+			
+			# Optional TLS for production Redis
+			# tls {
+			#     enabled true
+			#     min_version "1.2"
+			#     server_name {env.REDIS_HOST}
+			# }
 		}
 
 		# Step 2: JWT Authentication
@@ -81,15 +56,24 @@ api.chandrastation.com {
 			meta_claims "tier" "scope"
 		}
 
-		# Add user info to headers
+		# Add authenticated user info to response headers
 		header {
 			X-User-ID {http.auth.user.id}
 			X-User-Tier {http.auth.user.tier}
 			X-User-Scope {http.auth.user.scope}
 		}
 
+		# Protected endpoints
+		handle /api/profile {
+			respond `{"user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}","scope":"{http.auth.user.scope}"}`
+		}
+		
+		handle /api/data {
+			respond `{"message":"Protected data access","user":"{http.auth.user.id}","timestamp":"{time.now.unix}"}`
+		}
+
 		handle /status {
-			respond `{"status":"ok","service":"chandra-station-private","timestamp":"{time.now.unix}","user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}","scope":"{http.auth.user.scope}"}`
+			respond `{"status":"ok","authenticated":true,"user_id":"{http.auth.user.id}"}`
 		}
 
 		handle {
@@ -97,13 +81,14 @@ api.chandrastation.com {
 		}
 	}
 
+	# Enhanced error handling for blacklist + auth
 	handle_errors {
 		@blacklist_error expression `{http.error.status_code} == 401 && {http.error.message} contains "blacklisted"`
 		header @blacklist_error {
 			X-Error-Type "api_key_blacklisted"
 			WWW-Authenticate "Bearer"
 		}
-		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled due to subscription changes","code":401,"details":"Please check your subscription status or generate a new API key"}` 401
+		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled","code":401,"details":"Please generate a new API key"}` 401
 
 		@auth_error expression `{http.error.status_code} == 401`
 		header @auth_error {
@@ -115,7 +100,7 @@ api.chandrastation.com {
 		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}` {http.error.status_code}
 	}
 
-	# Apply CORS headers to all other requests
+	# CORS headers for all responses
 	header {
 		Access-Control-Allow-Origin *
 		Access-Control-Allow-Methods "GET, POST, OPTIONS"
