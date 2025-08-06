@@ -1,5 +1,5 @@
-# Caddy JWT Blacklist Plugin - Unified JWT Authentication and Blacklist
-# This configuration demonstrates the integrated JWT authentication and blacklist functionality
+# Caddy JWT Blacklist Plugin - Configuration Examples
+# This demonstrates different usage patterns for the unified JWT authentication and blacklist middleware
 
 {
 	admin localhost:2019
@@ -11,111 +11,176 @@
 	}
 }
 
-# Example 1: Basic JWT authentication with blacklist checking
+# =============================================================================
+# Example 1: Basic JWT + Blacklist (Local Redis, no TLS)
+# =============================================================================
 localhost:8080 {
 	jwt_blacklist {
-		# Redis configuration
-		redis_addr {env.REDIS_URL}
-		redis_password {env.REDIS_PASSWORD}
+		# Redis configuration for blacklist checking
+		redis_addr localhost:6379
+		redis_password ""
 		redis_db 0
 		blacklist_prefix "BLACKLIST:key:"
 		timeout 50ms
 		fail_open true
 		log_blocked true
 		
-		# TLS configuration for cloud Redis (optional)
-		tls {
-			enabled true
-			min_version "1.2"
-		}
-		
 		# JWT authentication configuration
 		sign_key {env.JWT_SECRET}
 		sign_alg HS256
+		from_query api_key access_token token
+		from_header Authorization X-API-Key
+		from_cookies session_token
+		user_claims sub jti
+		meta_claims "tier" "scope"
+	}
+	
+	respond `{"message":"Hello {http.auth.user.id}!","tier":"{http.auth.user.tier}","api_key_id":"{http.auth.user.jti}","timestamp":"{time.now.unix}"}`
+}
+
+# =============================================================================
+# Example 2: JWT + Blacklist with Redis TLS
+# =============================================================================
+api.example.com {
+	tls internal
+	
+	jwt_blacklist {
+		# Redis with TLS configuration
+		redis_addr your-redis-host.com:6379
+		redis_password {env.REDIS_PASSWORD}
+		redis_db 0
+		blacklist_prefix "BLACKLIST:key:"
+		timeout 100ms
+		fail_open true
+		log_blocked true
 		
-		# Token extraction sources (in order of precedence)
+		# TLS configuration for Redis
+		tls {
+			enabled true
+			server_name your-redis-host.com
+			min_version "1.2"
+		}
+		
+		# JWT authentication
+		sign_key {env.JWT_SECRET}
+		sign_alg HS256
 		from_query api_key access_token token
 		from_header Authorization X-Api-Token X-API-Key
 		from_cookies session_token
-		
-		# JWT claims configuration
-		user_claims sub
-		meta_claims "tier" "scope"
-		
-		# Optional: JWK support for asymmetric keys
-		# jwk_url https://your-auth-server.com/.well-known/jwks.json
-		
-		# Optional: Skip JWT signature verification (not recommended for production)
-		# skip_verification
-		
-		# Optional: Validate issuer and audience
-		# issuer_whitelist https://your-auth-server.com
-		# audience_whitelist https://api.example.com
+		user_claims sub jti uid user_id
+		meta_claims "tier" "scope" "org_id"
 	}
 	
-	# Your application routes
-	handle /health {
-		respond `{"status":"ok","service":"jwt-blacklist","user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}","timestamp":"{time.now.unix}"}`
+	route {
+		# Handle CORS preflight
+		@options method OPTIONS
+		handle @options {
+			header {
+				Access-Control-Allow-Origin *
+				Access-Control-Allow-Methods "GET, POST, OPTIONS"
+				Access-Control-Allow-Headers "Origin, Content-Type, Accept, Authorization, X-API-Key"
+				Access-Control-Max-Age 86400
+			}
+			respond "" 204
+		}
+		
+		# Add user context headers
+		header {
+			X-User-ID {http.auth.user.id}
+			X-User-Tier {http.auth.user.tier}
+			X-API-Key-ID {http.auth.user.jti}
+		}
+		
+		handle /status {
+			respond `{"status":"ok","user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}","org_id":"{http.auth.user.org_id}"}` 200
+		}
+		
+		handle /api/* {
+			reverse_proxy localhost:8081 {
+				header_up X-User-ID {http.auth.user.id}
+				header_up X-User-Tier {http.auth.user.tier}
+				header_up X-Forwarded-For {remote_ip}
+			}
+		}
+		
+		handle {
+			respond `{"error":"not_found","message":"Endpoint not found"}` 404
+		}
 	}
 	
-	handle /api/* {
-		respond `{"message":"API access granted","user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}","path":"{uri}","timestamp":"{time.now.unix}"}`
-	}
-	
-	handle {
-		respond `{"message":"JWT Authentication + Blacklist Server","endpoints":["/health","/api/*"],"note":"Include Bearer token, api_key parameter, or session cookie to authenticate"}`
-	}
-	
-	# Error handling
+	# Error handling with blacklist-specific responses
 	handle_errors {
 		@blacklist_error expression `{http.error.status_code} == 401 && "blacklisted" in {http.error.message}`
-		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled due to subscription changes","code":401,"details":"Please check your subscription status or generate a new API key"}` 401
+		header @blacklist_error {
+			X-Error-Type "api_key_blacklisted"
+			WWW-Authenticate "Bearer"
+		}
+		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled","code":401}` 401
 		
 		@auth_error expression `{http.error.status_code} == 401`
-		respond @auth_error `{"error":"unauthorized","message":"Invalid or missing API key","code":401,"details":"Please provide a valid JWT token"}` 401
+		header @auth_error {
+			X-Error-Type "authentication_failed"
+			WWW-Authenticate "Bearer"
+		}
+		respond @auth_error `{"error":"unauthorized","message":"Invalid or missing API key","code":401}` 401
 		
 		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}` {http.error.status_code}
 	}
 }
 
-# Example 2: Production API server with advanced JWT configuration
-api.example.com {
+# =============================================================================
+# Example 3: JWT-Only Authentication (No Blacklisting)
+# =============================================================================
+jwt-only.example.com {
+	tls internal
+	
+	# JWT authentication WITHOUT Redis blacklisting
 	jwt_blacklist {
-		redis_addr {env.REDIS_URL}
-		redis_password {env.REDIS_PASSWORD}
-		redis_db 0
-		blacklist_prefix "BLACKLIST:key:"
-		timeout 100ms
-		fail_open false  # Fail closed in production
-		log_blocked true
-		
-		# Production JWT configuration
+		# JWT configuration only
 		sign_key {env.JWT_SECRET}
 		sign_alg HS256
+		from_query api_key access_token token
+		from_header Authorization X-Api-Token X-API-Key
+		from_cookies session_token
+		user_claims sub jti uid user_id
+		meta_claims "tier" "scope"
 		
-		# Multiple token sources
-		from_query api_key access_token
-		from_header Authorization X-API-Key
-		from_cookies auth_session
-		
-		# Extract user information
-		user_claims sub uid user_id
-		meta_claims "tier->user_tier" "scope->access_scope" "org_id->organization"
-		
-		# Validation
-		issuer_whitelist https://auth.example.com
-		audience_whitelist https://api.example.com
+		# Disable Redis for JWT-only mode
+		redis_addr "disabled"
+		fail_open true
+		timeout 100ms
 	}
 	
-	# API routes with user context available
-	route /v1/* {
-		respond `{"api_version":"v1","user_id":"{http.auth.user.id}","tier":"{http.auth.user.user_tier}","scope":"{http.auth.user.access_scope}","path":"{uri}"}`
+	route {
+		@options method OPTIONS
+		handle @options {
+			header {
+				Access-Control-Allow-Origin *
+				Access-Control-Allow-Methods "GET, POST, OPTIONS"
+				Access-Control-Allow-Headers "Origin, Content-Type, Accept, Authorization, X-API-Key"
+			}
+			respond "" 204
+		}
+		
+		header {
+			X-User-ID {http.auth.user.id}
+			X-User-Tier {http.auth.user.tier}
+		}
+		
+		handle /status {
+			respond `{"status":"ok","auth_mode":"jwt_only","user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}"}` 200
+		}
+		
+		handle {
+			respond `{"error":"not_found","message":"Endpoint not found"}` 404
+		}
 	}
 	
-	route /admin/* {
-		# Admin endpoints could have additional authorization logic here
-		respond `{"admin_access":"granted","user_id":"{http.auth.user.id}","organization":"{http.auth.user.organization}"}`
+	handle_errors {
+		@auth_error expression `{http.error.status_code} == 401`
+		respond @auth_error `{"error":"unauthorized","message":"Invalid JWT token","code":401}` 401
+		
+		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}` {http.error.status_code}
 	}
-	
-	respond `{"error":"not_found","message":"API endpoint not found"}` 404
 }
+

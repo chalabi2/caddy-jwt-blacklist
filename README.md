@@ -98,37 +98,62 @@ localhost:8080 {
 
 > **Note:** Complete example configurations are available in the [`example-configs/`](example-configs/) directory.
 
-### Basic Configuration
+### Configuration Patterns
+
+The plugin supports three main usage patterns:
+
+#### 1. **Full JWT + Blacklist** (Recommended for critical APIs)
 
 ```caddy
 jwt_blacklist {
-    # Redis settings (required)
+    # Redis configuration for blacklist checking
     redis_addr {env.REDIS_URL}
     redis_password {env.REDIS_PASSWORD}
     redis_db 0
     blacklist_prefix "BLACKLIST:key:"
+    fail_open true
+    timeout 500ms
+    log_blocked true
 
-    # JWT authentication (required)
+    # TLS configuration for Redis (if using TLS like Upstash)
+    tls {
+        enabled true
+        server_name {env.REDIS_TLS_SERVER_NAME}
+        min_version "1.2"
+    }
+
+    # JWT authentication configuration
     sign_key {env.JWT_SECRET}
     sign_alg HS256
-
-    # Token extraction
-    from_header Authorization X-API-Key
     from_query api_key access_token token
+    from_header Authorization X-Api-Token X-API-Key
     from_cookies session_token
-
-    # Claims mapping
-    user_claims sub uid user_id
-    meta_claims "tier" "scope" "org_id->organization"
-
-    # Operational settings
-    timeout 100ms
-    fail_open true
-    log_blocked true
+    user_claims sub jti uid user_id
+    meta_claims "tier" "scope"
 }
 ```
 
-### Advanced Configuration
+#### 2. **JWT-Only** (Authentication without blacklisting)
+
+```caddy
+jwt_blacklist {
+    # JWT authentication configuration
+    sign_key {env.JWT_SECRET}
+    sign_alg HS256
+    from_query api_key access_token token
+    from_header Authorization X-Api-Token X-API-Key
+    from_cookies session_token
+    user_claims sub jti uid user_id
+    meta_claims "tier" "scope"
+
+    # Disable Redis (JWT-only mode)
+    redis_addr "disabled"
+    fail_open true
+    timeout 100ms
+}
+```
+
+#### 3. **Advanced Configuration with JWK Support**
 
 ```caddy
 jwt_blacklist {
@@ -138,6 +163,7 @@ jwt_blacklist {
     redis_db 0
     tls {
         enabled true
+        server_name {env.REDIS_TLS_SERVER_NAME}
         min_version "1.2"
     }
 
@@ -158,6 +184,16 @@ jwt_blacklist {
     meta_claims "role->user_role" "permissions->access_permissions"
 }
 ```
+
+### ⚠️ **Important: Blacklist Behavior**
+
+**Pattern 1 (Full JWT + Blacklist)**: ✅ **Enforces blacklisting** - Tokens are checked against Redis blacklist before authentication.
+
+**Pattern 2 (JWT-Only)**: ❌ **No blacklisting** - Only JWT authentication is performed. Use `redis_addr "disabled"` and `fail_open true` to skip Redis operations.
+
+**Pattern 3 (Advanced)**: ✅ **Enforces blacklisting** - Same as Pattern 1 with additional JWT features.
+
+**Recommendation**: Use **Pattern 1** for your main API and **Pattern 2** for services that only need JWT authentication (like gRPC endpoints) to maintain consistent authentication while avoiding Redis dependency.
 
 ## Configuration Options
 
