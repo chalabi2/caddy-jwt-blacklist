@@ -1,7 +1,7 @@
 {
   "name": "caddy-jwt-blacklist",
-  "version": "0.1.0",
-  "description": "JWT-based API key blacklist middleware for Caddy with Redis backend",
+  "version": "0.2.0",
+  "description": "Unified JWT authentication and blacklist middleware for Caddy with Redis backend - integrates JWT validation with immediate token revocation",
   "author": "chalabi",
   "homepage": "https://github.com/chalabi2/caddy-jwt-blacklist",
   "repository": "https://github.com/chalabi2/caddy-jwt-blacklist",
@@ -10,11 +10,14 @@
     "caddy",
     "plugin",
     "jwt",
+    "authentication",
     "blacklist",
     "redis",
-    "authentication",
     "middleware",
-    "api-keys"
+    "api-keys",
+    "token-revocation",
+    "jwk",
+    "unified-auth"
   ],
   "caddy": {
     "module_id": "http.handlers.jwt_blacklist",
@@ -23,14 +26,24 @@
   },
   "compatibility": {
     "caddy": ">=2.8.0",
-    "go": ">=1.21"
+    "go": ">=1.22"
   },
   "features": [
-    "Redis-based JWT blacklist checking",
-    "Multiple token source support",
-    "Fail-open behavior for reliability",
-    "Detailed request logging",
-    "Integration with existing JWT auth",
-    "Low latency operations (~0.5ms)"
-  ]
+    "Unified JWT authentication and blacklist checking",
+    "Redis-based token revocation with O(1) lookups",
+    "Multiple JWT signing algorithms (HS256, RS256, ES256, EdDSA, etc.)",
+    "JWK support with automatic key refresh",
+    "Multiple token source support (headers, query, cookies)",
+    "Blacklist-first architecture for optimal performance",
+    "Fail-open/fail-closed Redis behavior",
+    "Comprehensive user context population",
+    "Detailed request and error logging",
+    "TLS Redis support for cloud deployments",
+    "Custom claims mapping and validation",
+    "Production-ready with <0.5ms latency overhead"
+  ],
+  "integration": {
+    "replaces": ["ggicci/caddy-jwt"],
+    "note": "This plugin integrates JWT authentication functionality from ggicci/caddy-jwt with Redis-based blacklist management, providing a unified solution that eliminates the need for separate JWT auth plugins."
+  }
 }

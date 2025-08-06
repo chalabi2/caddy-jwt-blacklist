@@ -1,17 +1,16 @@
 #!/bin/bash
 
-# Script to build Caddy with JWT authentication, blacklist, and rate limiting modules
-# This script builds from the local codebase and ensures proper module ordering
+# Script to build Caddy with unified JWT authentication and blacklist module
+# This script builds from the local codebase with integrated JWT functionality
 
 set -e
 
-echo "🚀 Building Caddy with JWT authentication, blacklist, and rate limiting modules..."
+echo "🚀 Building Caddy with unified JWT authentication and blacklist module..."
 echo "📋 Including modules:"
 echo "   - Cloudflare DNS provider (for TLS challenges)"
 echo "   - chalabi2/caddy-ratelimit (for rate limiting)"
-echo "   - ggicci/caddy-jwt (for JWT authentication)"
 echo "   - chalabi2/caddy-usage (for usage tracking)"
-echo "   - chalabi2/caddy-jwt-blacklist (LOCAL - for API key revocation)"
+echo "   - chalabi2/caddy-jwt-blacklist (LOCAL - unified JWT auth + blacklist)"
 echo "   - Standard Caddy modules"
 
 # Check if Go is installed
@@ -31,15 +30,14 @@ fi
 BUILD_DIR="./build"
 mkdir -p "$BUILD_DIR"
 
-echo "🔨 Building Caddy with JWT, blacklist, and rate limiting modules..."
+echo "🔨 Building Caddy with unified JWT + blacklist module..."
 
-# Build Caddy with the JWT authentication, blacklist, rate limiting, and usage modules
-# Note: Using local codebase for jwt-blacklist module with "=."
+# Build Caddy with the unified JWT authentication and blacklist module
+# Note: No longer need separate ggicci/caddy-jwt module - functionality is integrated
 xcaddy build \
     --output "$BUILD_DIR/caddy" \
     --with github.com/caddy-dns/cloudflare \
     --with github.com/chalabi2/caddy-ratelimit@v0.1.3 \
-    --with github.com/ggicci/caddy-jwt@v1.1.0 \
     --with github.com/chalabi2/caddy-usage@v0.1.2 \
     --with github.com/chalabi2/caddy-jwt-blacklist=.
 
@@ -53,12 +51,12 @@ echo ""
 # Test the build with our configurations
 echo "🧪 Testing configuration validation..."
 
-# Test standalone JWT blacklist config
-echo "  Testing standalone JWT blacklist configuration..."
-if "$BUILD_DIR/caddy" validate --config example-configs/Caddyfile > /dev/null 2>&1; then
-    echo "  ✅ Standalone configuration is valid!"
+# Test unified JWT + blacklist config
+echo "  Testing unified JWT + blacklist configuration..."
+if "$BUILD_DIR/caddy" validate --config example-configs/Caddyfile --adapter caddyfile > /dev/null 2>&1; then
+    echo "  ✅ Caddyfile configuration is valid!"
 else
-    echo "  ⚠️  Standalone configuration has warnings (expected - missing jwtauth module)"
+    echo "  ⚠️  Caddyfile configuration has warnings (check environment variables)"
 fi
 
 # Test JSON config
@@ -66,13 +64,13 @@ echo "  Testing JSON configuration..."
 if "$BUILD_DIR/caddy" validate --config example-configs/caddy.json > /dev/null 2>&1; then
     echo "  ✅ JSON configuration is valid!"
 else
-    echo "  ⚠️  JSON configuration has warnings"
+    echo "  ⚠️  JSON configuration has warnings (check environment variables)"
 fi
 
 # Check that our module is properly loaded
 echo "  Checking module registration..."
 if "$BUILD_DIR/caddy" list-modules | grep -q "http.handlers.jwt_blacklist"; then
-    echo "  ✅ JWT blacklist module registered correctly!"
+    echo "  ✅ Unified JWT + blacklist module registered correctly!"
 else
     echo "  ❌ JWT blacklist module not found in loaded modules"
     echo "  Available modules:"
@@ -80,18 +78,14 @@ else
     exit 1
 fi
 
-# Test example configurations
-echo "  Testing example configurations..."
-if "$BUILD_DIR/caddy" validate --config example-configs/Caddyfile > /dev/null 2>&1; then
-    echo "  ✅ Main Caddyfile example is valid!"
+# Verify no conflicting JWT modules
+echo "  Checking for JWT module conflicts..."
+JWT_MODULES=$("$BUILD_DIR/caddy" list-modules | grep -E "(jwt|auth)" | grep -v "jwt_blacklist" || true)
+if [ -n "$JWT_MODULES" ]; then
+    echo "  ℹ️  Other JWT/auth modules found:"
+    echo "$JWT_MODULES" | sed 's/^/    /'
 else
-    echo "  ⚠️  Main Caddyfile has warnings (check Redis connection)"
-fi
-
-if "$BUILD_DIR/caddy" validate --config example-configs/Caddyfile-jwt-auth > /dev/null 2>&1; then
-    echo "  ✅ JWT auth integration example is valid!"
-else
-    echo "  ⚠️  JWT auth example has warnings (expected if jwtauth module not available)"
+    echo "  ✅ No conflicting JWT modules found!"
 fi
 
 echo ""
@@ -99,34 +93,57 @@ echo "🎯 To use the custom Caddy binary:"
 echo "  1. Copy it to your system: sudo cp $BUILD_DIR/caddy /usr/local/bin/"
 echo "  2. Or run directly: $BUILD_DIR/caddy run --config example-configs/Caddyfile"
 echo ""
-echo "📝 Important setup steps:"
+echo "📝 Required environment variables:"
 echo "   1. Set the JWT_SECRET environment variable:"
-echo "      export JWT_SECRET='your-very-secure-jwt-secret-key-here'"
-echo "   2. Make sure CLOUDFLARE_API_TOKEN is still set (for DNS challenges)"
-echo "   3. Set up Redis environment variables:"
+echo "      export JWT_SECRET='your-base64-encoded-jwt-secret'"
+echo "   2. Set up Redis environment variables:"
 echo "      export REDIS_URL='localhost:6379'"
 echo "      export REDIS_PASSWORD='your-redis-password'"
-echo "   4. Update your Next.js .env file to include the same JWT_SECRET"
-echo "   5. Ensure Redis is running and properly secured"
+echo "   3. Optional: Cloudflare API token (for TLS challenges):"
+echo "      export CLOUDFLARE_API_TOKEN='your-cloudflare-token'"
+echo ""
+echo "💡 JWT Secret generation:"
+echo "   # Generate a secure base64-encoded secret:"
+echo "   openssl rand -base64 32"
 echo ""
 echo "🔧 Your modules included:"
 echo "   ✅ Cloudflare DNS (for TLS certificates)"
 echo "   ✅ chalabi2/caddy-ratelimit (for rate limiting)" 
 echo "   ✅ chalabi2/caddy-usage (for usage tracking)"
-echo "   ✅ JWT authentication (for private endpoints)"
-echo "   ✅ JWT blacklist (LOCAL BUILD - for API key revocation with proper ordering)"
+echo "   ✅ Unified JWT Authentication + Blacklist (LOCAL BUILD)"
+echo "      - Integrated JWT validation (replaces ggicci/caddy-jwt)"
+echo "      - Redis-based token revocation"
+echo "      - Blacklist-first architecture for optimal performance"
+echo "      - Multiple signing algorithms (HS256, RS256, ES256, EdDSA)"
+echo "      - JWK support with automatic refresh"
 
-# Optional: Run a quick integration test if Redis is available
-if [ "$1" = "test-redis" ]; then
+# Optional: Run integration tests if Redis is available
+if [ "$1" = "test" ]; then
     echo ""
-    echo "🔍 Running Redis integration test..."
+    echo "🔍 Running integration tests..."
     
     # Check if Redis is available
     if command -v redis-cli &> /dev/null && redis-cli ping > /dev/null 2>&1; then
-        echo "  ✅ Redis is available, running integration tests..."
-        go test -v ./... -run TestJWTBlacklistMiddleware
+        echo "  ✅ Redis is available, running full test suite..."
+        make redis-start > /dev/null 2>&1 || true
+        go test -v ./...
+        make redis-stop > /dev/null 2>&1 || true
     else
-        echo "  ⚠️  Redis not available for integration testing"
-        echo "  To run full tests: start Redis and run: $0 test-redis"
+        echo "  ⚠️  Redis not available, running unit tests only..."
+        go test -v ./... -short
+        echo "  To run full integration tests: start Redis and run: $0 test"
     fi
+elif [ "$1" = "demo" ]; then
+    echo ""
+    echo "🎮 Starting demo server..."
+    echo "  Server will start on http://localhost:8080"
+    echo "  Press Ctrl+C to stop"
+    export JWT_SECRET="TkZMNSowQmMjOVU2RUB0bm1DJkU3U1VONkd3SGZMbVk="
+    export REDIS_URL="localhost:6379" 
+    "$BUILD_DIR/caddy" run --config example-configs/Caddyfile
 fi
+
+echo ""
+echo "🚀 Build complete! Your unified JWT + blacklist module is ready."
+echo "   Run: $0 test    # To run tests"
+echo "   Run: $0 demo    # To start demo server"

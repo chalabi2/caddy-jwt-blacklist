@@ -23,8 +23,8 @@ func TestIntegrationWithExistingSetup(t *testing.T) {
 	}
 	defer testRedis.cleanup()
 
-	// Use the exact JWT secret pattern from the existing setup
-	jwtSecret := "your-very-secure-jwt-secret-key-here"
+	// Use the test JWT secret (base64 encoded for proper validation)
+	jwtSecret := TestSignKey
 
 	// Create middleware with configuration matching the spec
 	jb := &JWTBlacklist{
@@ -126,10 +126,12 @@ func TestIntegrationWithExistingSetup(t *testing.T) {
 			}
 
 			// Create JWT token matching webapp format
-			token, err := generateTestJWT(scenario.apiKeyID, scenario.userID, scenario.tier, "api_access", jwtSecret)
-			if err != nil {
-				t.Fatalf("Failed to generate JWT for scenario %s: %v", scenario.scenario, err)
-			}
+			token := createTestToken(map[string]interface{}{
+				"sub":   scenario.userID,
+				"jti":   scenario.apiKeyID,
+				"tier":  scenario.tier,
+				"scope": "api_access",
+			})
 
 			// Test different token passing methods (as used in production)
 			tokenTests := []struct {
@@ -324,7 +326,7 @@ func TestRateLimitingIntegration(t *testing.T) {
 	}
 	defer testRedis.cleanup()
 
-	jwtSecret := "test-jwt-secret"
+	jwtSecret := TestSignKey
 
 	// Test that blacklisted tokens are blocked before rate limiting
 	tiers := []string{"FREE", "BASIC", "PREMIUM", "ENTERPRISE", "UNLIMITED"}
@@ -360,10 +362,12 @@ func TestRateLimitingIntegration(t *testing.T) {
 			defer func() { _ = jb.Cleanup() }()
 
 			// Generate token
-			token, err := generateTestJWT(apiKeyID, userID, tier, "api_access", jwtSecret)
-			if err != nil {
-				t.Fatalf("Failed to generate JWT: %v", err)
-			}
+			token := createTestToken(map[string]interface{}{
+				"sub":   userID,
+				"jti":   apiKeyID,
+				"tier":  tier,
+				"scope": "api_access",
+			})
 
 			req := httptest.NewRequest("GET", "/cosmos/status", nil)
 			req.Header.Set("Authorization", "Bearer "+token)

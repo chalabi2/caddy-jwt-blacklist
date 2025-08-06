@@ -2,6 +2,7 @@ package jwtblacklist
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -18,8 +19,11 @@ type Config struct {
 	RedisDB       int        `json:"redis_db,omitempty"`
 	RedisTLS      *TLSConfig `json:"redis_tls,omitempty"`
 
-	// JWT settings
+	// JWT settings (for backward compatibility)
 	JWTSecret string `json:"jwt_secret,omitempty"`
+
+	// Advanced JWT configuration
+	JWT *JWTConfig `json:"jwt,omitempty"`
 
 	// Blacklist settings
 	BlacklistPrefix string `json:"blacklist_prefix,omitempty"`
@@ -32,9 +36,7 @@ type Config struct {
 
 // setDefaults sets default values for the configuration
 func (c *Config) setDefaults() {
-	if c.RedisAddr == "" {
-		c.RedisAddr = "localhost:6379"
-	}
+	// RedisAddr is required and has no default
 	if c.RedisDB == 0 {
 		c.RedisDB = 0
 	}
@@ -44,22 +46,41 @@ func (c *Config) setDefaults() {
 	if c.Timeout == 0 {
 		c.Timeout = caddy.Duration(50 * time.Millisecond)
 	}
-	if !c.FailOpen {
-		c.FailOpen = true // Fail open by default for safety
+	// FailOpen defaults to false (fail closed for security)
+	// No need to set it explicitly since bool zero value is false
+
+	// Initialize JWT config if not provided
+	if c.JWT == nil {
+		c.JWT = &JWTConfig{}
+	}
+
+	// Set JWT defaults
+	c.JWT.setJWTDefaults()
+
+	// For backward compatibility, use simple JWT secret if advanced config is empty
+	if c.JWTSecret != "" && c.JWT.SignKey == "" {
+		c.JWT.SignKey = c.JWTSecret
 	}
 }
 
 // validate ensures the configuration is valid
 func (c *Config) validate() error {
-	if c.JWTSecret == "" {
-		return fmt.Errorf("jwt_secret is required")
-	}
+	// Validate basic configuration
 	if c.RedisAddr == "" {
 		return fmt.Errorf("redis_addr is required")
 	}
 	if time.Duration(c.Timeout) < time.Millisecond {
 		return fmt.Errorf("timeout must be at least 1ms")
 	}
+
+	// Validate JWT configuration
+	if c.JWT == nil {
+		return fmt.Errorf("JWT configuration is required")
+	}
+	if c.JWT.SignKey == "" && c.JWT.JWKURL == "" && c.JWTSecret == "" {
+		return fmt.Errorf("either jwt_secret, sign_key, or jwk_url is required")
+	}
+
 	return nil
 }
 
@@ -138,6 +159,94 @@ func (jb *JWTBlacklist) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			}
 			config.LogBlocked = d.Val() == "true"
 
+		// JWT configuration options (simple)
+		case "sign_key":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			if !d.NextArg() {
+				return d.ArgErr()
+			}
+			config.JWT.SignKey = d.Val()
+
+		case "sign_alg":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			if !d.NextArg() {
+				return d.ArgErr()
+			}
+			config.JWT.SignAlgorithm = d.Val()
+
+		case "jwk_url":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			if !d.NextArg() {
+				return d.ArgErr()
+			}
+			config.JWT.JWKURL = d.Val()
+
+		case "skip_verification":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			config.JWT.SkipVerification = true
+
+		case "from_query":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			config.JWT.FromQuery = d.RemainingArgs()
+
+		case "from_header":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			config.JWT.FromHeader = d.RemainingArgs()
+
+		case "from_cookies":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			config.JWT.FromCookies = d.RemainingArgs()
+
+		case "issuer_whitelist":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			config.JWT.IssuerWhitelist = d.RemainingArgs()
+
+		case "audience_whitelist":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			config.JWT.AudienceWhitelist = d.RemainingArgs()
+
+		case "user_claims":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			config.JWT.UserClaims = d.RemainingArgs()
+
+		case "meta_claims":
+			if config.JWT == nil {
+				config.JWT = &JWTConfig{}
+			}
+			if config.JWT.MetaClaims == nil {
+				config.JWT.MetaClaims = make(map[string]string)
+			}
+			for _, metaClaim := range d.RemainingArgs() {
+				claim, placeholder, err := parseMetaClaim(metaClaim)
+				if err != nil {
+					return d.Errf("invalid meta_claims: %v", err)
+				}
+				if _, ok := config.JWT.MetaClaims[claim]; ok {
+					return d.Errf("invalid meta_claims: duplicate claim: %s", claim)
+				}
+				config.JWT.MetaClaims[claim] = placeholder
+			}
+
 		// TLS configuration block
 		case "tls":
 			tlsConfig := &TLSConfig{}
@@ -198,4 +307,27 @@ func (jb *JWTBlacklist) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 
 	jb.Config = config
 	return nil
+}
+
+// parseMetaClaim parses key to get the claim and corresponding placeholder
+// e.g "IsAdmin -> is_admin" as { Claim: "IsAdmin", Placeholder: "is_admin" }
+func parseMetaClaim(key string) (claim, placeholder string, err error) {
+	parts := strings.Split(key, "->")
+	if len(parts) == 1 {
+		claim = strings.TrimSpace(parts[0])
+		placeholder = strings.TrimSpace(parts[0])
+	} else if len(parts) == 2 {
+		claim = strings.TrimSpace(parts[0])
+		placeholder = strings.TrimSpace(parts[1])
+	} else {
+		return "", "", fmt.Errorf("too many delimiters (->) in key %q", key)
+	}
+
+	if claim == "" {
+		return "", "", fmt.Errorf("empty claim in key %q", key)
+	}
+	if placeholder == "" {
+		return "", "", fmt.Errorf("empty placeholder in key %q", key)
+	}
+	return
 }

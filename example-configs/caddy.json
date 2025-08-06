@@ -41,14 +41,33 @@
                             "redis_addr": "{env.REDIS_URL}",
                             "redis_password": "{env.REDIS_PASSWORD}",
                             "redis_db": 0,
-                            "jwt_secret": "{env.JWT_SECRET}",
                             "blacklist_prefix": "BLACKLIST:key:",
-                            "fail_open": true,
                             "timeout": "50ms",
+                            "fail_open": true,
                             "log_blocked": true,
                             "redis_tls": {
                               "enabled": true,
                               "min_version": "1.2"
+                            },
+                            "jwt": {
+                              "sign_key": "{env.JWT_SECRET}",
+                              "sign_alg": "HS256",
+                              "from_query": [
+                                "api_key",
+                                "access_token",
+                                "token"
+                              ],
+                              "from_header": [
+                                "Authorization",
+                                "X-Api-Token",
+                                "X-API-Key"
+                              ],
+                              "from_cookies": ["session_token"],
+                              "user_claims": ["sub"],
+                              "meta_claims": {
+                                "tier": "tier",
+                                "scope": "scope"
+                              }
                             }
                           }
                         }
@@ -63,7 +82,7 @@
                       "handle": [
                         {
                           "handler": "static_response",
-                          "body": "{\"status\":\"ok\",\"service\":\"jwt-blacklist\",\"timestamp\":\"{time.now.unix}\"}"
+                          "body": "{\"status\":\"ok\",\"service\":\"jwt-blacklist\",\"user_id\":\"{http.auth.user.id}\",\"tier\":\"{http.auth.user.tier}\",\"timestamp\":\"{time.now.unix}\"}"
                         }
                       ]
                     },
@@ -76,7 +95,7 @@
                       "handle": [
                         {
                           "handler": "static_response",
-                          "body": "{\"message\":\"API access granted\",\"path\":\"{uri}\",\"timestamp\":\"{time.now.unix}\"}"
+                          "body": "{\"message\":\"API access granted\",\"user_id\":\"{http.auth.user.id}\",\"tier\":\"{http.auth.user.tier}\",\"path\":\"{uri}\",\"timestamp\":\"{time.now.unix}\"}"
                         }
                       ]
                     },
@@ -84,7 +103,87 @@
                       "handle": [
                         {
                           "handler": "static_response",
-                          "body": "{\"message\":\"JWT Blacklist Test Server\",\"endpoints\":[\"/health\",\"/api/*\"]}"
+                          "body": "{\"message\":\"JWT Authentication + Blacklist Server\",\"endpoints\":[\"/health\",\"/api/*\"],\"note\":\"Include Bearer token, api_key parameter, or session cookie to authenticate\"}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "match": [
+                {
+                  "host": ["api.example.com"]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "jwt_blacklist",
+                          "config": {
+                            "redis_addr": "{env.REDIS_URL}",
+                            "redis_password": "{env.REDIS_PASSWORD}",
+                            "redis_db": 0,
+                            "blacklist_prefix": "BLACKLIST:key:",
+                            "timeout": "100ms",
+                            "fail_open": false,
+                            "log_blocked": true,
+                            "jwt": {
+                              "sign_key": "{env.JWT_SECRET}",
+                              "sign_alg": "HS256",
+                              "from_query": ["api_key", "access_token"],
+                              "from_header": ["Authorization", "X-API-Key"],
+                              "from_cookies": ["auth_session"],
+                              "user_claims": ["sub", "uid", "user_id"],
+                              "meta_claims": {
+                                "tier": "user_tier",
+                                "scope": "access_scope",
+                                "org_id": "organization"
+                              },
+                              "issuer_whitelist": ["https://auth.example.com"],
+                              "audience_whitelist": ["https://api.example.com"]
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "match": [
+                        {
+                          "path": ["/v1/*"]
+                        }
+                      ],
+                      "handle": [
+                        {
+                          "handler": "static_response",
+                          "body": "{\"api_version\":\"v1\",\"user_id\":\"{http.auth.user.id}\",\"tier\":\"{http.auth.user.user_tier}\",\"scope\":\"{http.auth.user.access_scope}\",\"path\":\"{uri}\"}"
+                        }
+                      ]
+                    },
+                    {
+                      "match": [
+                        {
+                          "path": ["/admin/*"]
+                        }
+                      ],
+                      "handle": [
+                        {
+                          "handler": "static_response",
+                          "body": "{\"admin_access\":\"granted\",\"user_id\":\"{http.auth.user.id}\",\"organization\":\"{http.auth.user.organization}\"}"
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "static_response",
+                          "status_code": 404,
+                          "body": "{\"error\":\"not_found\",\"message\":\"API endpoint not found\"}"
                         }
                       ]
                     }
@@ -98,14 +197,36 @@
               {
                 "match": [
                   {
-                    "expression": "{http.error.status_code} == 401 && {http.error.message} contains \"blacklisted\""
+                    "expression": "{http.error.status_code} == 401 && \"blacklisted\" in {http.error.message}"
                   }
                 ],
                 "handle": [
                   {
                     "handler": "static_response",
                     "status_code": 401,
-                    "body": "{\"error\":\"api_key_blacklisted\",\"message\":\"API key has been disabled\",\"code\":401}"
+                    "headers": {
+                      "X-Error-Type": ["api_key_blacklisted"],
+                      "WWW-Authenticate": ["Bearer"]
+                    },
+                    "body": "{\"error\":\"api_key_blacklisted\",\"message\":\"API key has been disabled due to subscription changes\",\"code\":401,\"details\":\"Please check your subscription status or generate a new API key\"}"
+                  }
+                ]
+              },
+              {
+                "match": [
+                  {
+                    "expression": "{http.error.status_code} == 401"
+                  }
+                ],
+                "handle": [
+                  {
+                    "handler": "static_response",
+                    "status_code": 401,
+                    "headers": {
+                      "X-Error-Type": ["authentication_failed"],
+                      "WWW-Authenticate": ["Bearer"]
+                    },
+                    "body": "{\"error\":\"unauthorized\",\"message\":\"Invalid or missing API key\",\"code\":401,\"details\":\"Please provide a valid JWT token\"}"
                   }
                 ]
               },

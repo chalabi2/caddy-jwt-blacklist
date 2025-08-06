@@ -4,19 +4,39 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/chalabi2/caddy-jwt-blacklist)](https://goreportcard.com/report/github.com/chalabi2/caddy-jwt-blacklist)
 [![Go Reference](https://pkg.go.dev/badge/github.com/chalabi2/caddy-jwt-blacklist.svg)](https://pkg.go.dev/github.com/chalabi2/caddy-jwt-blacklist)
 
-A comprehensive JWT-based API key blacklist middleware for Caddy that provides immediate token revocation capabilities using Redis. This plugin extends existing JWT authentication to block API keys when subscriptions are cancelled, expired, or downgraded.
+A comprehensive **unified JWT authentication and blacklist middleware** for Caddy that provides immediate token revocation capabilities using Redis. This plugin integrates full JWT authentication with Redis-based blacklist checking in a single, high-performance middleware.
 
 > [!NOTE]
+> This plugin integrates JWT authentication functionality from [ggicci/caddy-jwt](https://github.com/ggicci/caddy-jwt) with our Redis-based blacklist system, providing a unified solution that eliminates the need for separate JWT auth plugins.
+
+> [!NOTE]  
 > This is not an official repository of the [Caddy Web Server](https://github.com/caddyserver) organization.
 
 ## Features
 
-- **Redis-based blacklist checking** - Fast O(1) lookups using Redis
-- **Multiple token sources** - Supports Authorization header, custom headers, query parameters, and cookies
-- **Fail-open behavior** - Continues processing if Redis is unavailable (configurable)
-- **Detailed logging** - Logs blocked requests with context
-- **Low latency** - Adds ~0.1-0.5ms per request
-- **Graceful error handling** - Specific error responses for blacklisted keys
+### 🔐 **Integrated JWT Authentication**
+
+- **Full JWT validation** - Signature verification, expiration, issuer/audience validation
+- **Multiple signing algorithms** - HS256, HS384, HS512, RS256, RS384, RS512, ES256, ES384, ES512, EdDSA
+- **JWK support** - Fetch public keys from JWK URLs with caching and refresh
+- **Flexible token extraction** - Authorization header, custom headers, query parameters, cookies
+- **Custom claims mapping** - Extract user metadata from JWT claims
+- **Skip verification mode** - For development and testing
+
+### 🚫 **Redis-Based Blacklist**
+
+- **Immediate token revocation** - O(1) Redis lookups for blacklisted tokens
+- **Blacklist-first architecture** - Check blacklist before expensive JWT validation
+- **TTL support** - Automatic expiration of blacklist entries
+- **Detailed blacklist metadata** - Store revocation reason and context
+
+### 🛡️ **Production-Ready Features**
+
+- **Fail-open/fail-closed** - Configurable behavior when Redis is unavailable
+- **Low latency** - Optimized request processing (~0.1-0.5ms overhead)
+- **Comprehensive logging** - Detailed request and error logging
+- **Graceful error handling** - Specific error responses for different failure modes
+- **User context population** - Set Caddy placeholders for downstream handlers
 
 ## Installation
 
@@ -39,160 +59,242 @@ Or add to your `xcaddy.json`:
 }
 ```
 
+## Quick Start
+
+Basic Caddyfile configuration:
+
+```caddy
+{
+    admin localhost:2019
+}
+
+localhost:8080 {
+    jwt_blacklist {
+        # Redis configuration
+        redis_addr {env.REDIS_URL}
+        redis_password {env.REDIS_PASSWORD}
+        redis_db 0
+        blacklist_prefix "BLACKLIST:key:"
+
+        # JWT authentication
+        sign_key {env.JWT_SECRET}
+        sign_alg HS256
+        from_header Authorization X-API-Key
+        from_query api_key access_token
+        user_claims sub
+        meta_claims "tier" "scope"
+
+        # Optional settings
+        timeout 50ms
+        fail_open true
+        log_blocked true
+    }
+
+    respond "Hello {http.auth.user.id}! Your tier: {http.auth.user.tier}"
+}
+```
+
 ## Configuration
 
 > **Note:** Complete example configurations are available in the [`example-configs/`](example-configs/) directory.
 
-### Caddyfile
-
-Basic usage - add the `jwt_blacklist` directive before JWT authentication:
+### Basic Configuration
 
 ```caddy
-{
-    # CRITICAL: Plugin execution order
-    order jwt_blacklist before jwtauth
-    order jwtauth before rate_limit
-}
+jwt_blacklist {
+    # Redis settings (required)
+    redis_addr {env.REDIS_URL}
+    redis_password {env.REDIS_PASSWORD}
+    redis_db 0
+    blacklist_prefix "BLACKLIST:key:"
 
-api.example.com {
-    # Step 1: JWT Blacklist Check
-    jwt_blacklist {
-        redis_addr {env.REDIS_URL}
-        redis_password {env.REDIS_PASSWORD}
-        redis_db 0
-        jwt_secret {env.JWT_SECRET}
-        blacklist_prefix "BLACKLIST:key:"
-        fail_open true
-        timeout 50ms
-        log_blocked true
-    }
+    # JWT authentication (required)
+    sign_key {env.JWT_SECRET}
+    sign_alg HS256
 
-    # Step 2: JWT Authentication (existing)
-    jwtauth {
-        sign_key {env.JWT_SECRET}
-        sign_alg HS256
-        from_query api_key access_token token
-        from_header Authorization X-Api-Token X-API-Key
-        from_cookies session_token
-        user_claims sub jti uid user_id
-        meta_claims "tier" "scope"
-    }
+    # Token extraction
+    from_header Authorization X-API-Key
+    from_query api_key access_token token
+    from_cookies session_token
 
-    # Your existing configuration...
+    # Claims mapping
+    user_claims sub uid user_id
+    meta_claims "tier" "scope" "org_id->organization"
+
+    # Operational settings
+    timeout 100ms
+    fail_open true
+    log_blocked true
 }
 ```
 
-### JSON Configuration
+### Advanced Configuration
 
-```json
-{
-  "admin": {
-    "listen": "localhost:2019"
-  },
-  "apps": {
-    "http": {
-      "servers": {
-        "srv0": {
-          "listen": [":8080"],
-          "routes": [
-            {
-              "match": [
-                {
-                  "host": ["api.example.com"],
-                  "path": ["/api*"]
-                }
-              ],
-              "handle": [
-                {
-                  "handler": "jwt_blacklist",
-                  "config": {
-                    "redis_addr": "{env.REDIS_URL}",
-                    "redis_password": "{env.REDIS_PASSWORD}",
-                    "redis_db": 0,
-                    "jwt_secret": "{env.JWT_SECRET}",
-                    "blacklist_prefix": "BLACKLIST:key:",
-                    "fail_open": true,
-                    "timeout": "50ms",
-                    "log_blocked": true
-                  }
-                },
-                {
-                  "handler": "jwtauth",
-                  "sign_key": "{env.JWT_SECRET}",
-                  "sign_alg": "HS256",
-                  "from_query": ["api_key", "access_token", "token"],
-                  "from_header": ["Authorization", "X-Api-Token", "X-API-Key"],
-                  "from_cookies": ["session_token"],
-                  "user_claims": ["sub", "jti", "uid", "user_id"],
-                  "meta_claims": ["tier", "scope"]
-                }
-              ]
-            }
-          ]
-        }
-      }
+```caddy
+jwt_blacklist {
+    # Redis with TLS
+    redis_addr {env.REDIS_URL}
+    redis_password {env.REDIS_PASSWORD}
+    redis_db 0
+    tls {
+        enabled true
+        min_version "1.2"
     }
-  }
+
+    # JWK for asymmetric keys
+    jwk_url https://auth.example.com/.well-known/jwks.json
+    sign_alg RS256
+
+    # Validation rules
+    issuer_whitelist https://auth.example.com
+    audience_whitelist https://api.example.com
+
+    # Custom token sources
+    from_header Authorization X-Custom-Token
+    from_query access_token
+
+    # Advanced claims mapping
+    user_claims sub email username
+    meta_claims "role->user_role" "permissions->access_permissions"
 }
 ```
 
 ## Configuration Options
 
-| Option             | Description                           | Default          |
-| ------------------ | ------------------------------------- | ---------------- |
-| `redis_addr`       | Redis server address                  | `localhost:6379` |
-| `redis_password`   | Redis password                        | _(empty)_        |
-| `redis_db`         | Redis database number                 | `0`              |
-| `jwt_secret`       | JWT signing secret _(required)_       | _(none)_         |
-| `blacklist_prefix` | Redis key prefix for blacklisted keys | `BLACKLIST:key:` |
-| `fail_open`        | Continue processing if Redis fails    | `true`           |
-| `timeout`          | Redis operation timeout               | `50ms`           |
-| `log_blocked`      | Log blocked requests                  | `false`          |
+### Redis Settings
 
-## Token Sources
+| Option             | Description                           | Default          | Required |
+| ------------------ | ------------------------------------- | ---------------- | -------- |
+| `redis_addr`       | Redis server address                  | -                | ✅       |
+| `redis_password`   | Redis password                        | _(empty)_        | ❌       |
+| `redis_db`         | Redis database number                 | `0`              | ❌       |
+| `blacklist_prefix` | Redis key prefix for blacklisted keys | `BLACKLIST:key:` | ❌       |
+| `timeout`          | Redis operation timeout               | `50ms`           | ❌       |
+| `fail_open`        | Continue processing if Redis fails    | `false`          | ❌       |
+| `log_blocked`      | Log blocked requests                  | `false`          | ❌       |
 
-The plugin checks for JWT tokens in the following order:
+### TLS Settings (for Redis)
 
-1. **Authorization header**: `Authorization: Bearer <token>`
-2. **X-API-Key header**: `X-API-Key: <token>`
-3. **X-Api-Token header**: `X-Api-Token: <token>`
-4. **Query parameters**: `?api_key=<token>`, `?access_token=<token>`, `?token=<token>`
-5. **Cookies**: `session_token=<token>`
+| Option        | Description         | Default | Required |
+| ------------- | ------------------- | ------- | -------- |
+| `enabled`     | Enable TLS          | `false` | ❌       |
+| `server_name` | TLS server name     | -       | ❌       |
+| `cert_file`   | Client certificate  | -       | ❌       |
+| `key_file`    | Client private key  | -       | ❌       |
+| `ca_file`     | CA certificate      | -       | ❌       |
+| `min_version` | Minimum TLS version | `1.2`   | ❌       |
+
+### JWT Authentication Settings
+
+| Option               | Description                       | Default                                         | Required |
+| -------------------- | --------------------------------- | ----------------------------------------------- | -------- |
+| `sign_key`           | JWT signing key (base64 for HMAC) | -                                               | ✅\*     |
+| `jwk_url`            | JWK endpoint URL                  | -                                               | ✅\*     |
+| `sign_alg`           | Signing algorithm                 | `HS256`                                         | ❌       |
+| `skip_verification`  | Skip signature verification       | `false`                                         | ❌       |
+| `from_query`         | Query parameter names             | `["api_key", "access_token", "token"]`          | ❌       |
+| `from_header`        | Header names                      | `["Authorization", "X-API-Key", "X-Api-Token"]` | ❌       |
+| `from_cookies`       | Cookie names                      | `["session_token"]`                             | ❌       |
+| `user_claims`        | JWT claims for user ID            | `["sub"]`                                       | ❌       |
+| `meta_claims`        | Additional claims mapping         | `{}`                                            | ❌       |
+| `issuer_whitelist`   | Allowed issuers                   | `[]`                                            | ❌       |
+| `audience_whitelist` | Allowed audiences                 | `[]`                                            | ❌       |
+
+_\* Either `sign_key` or `jwk_url` is required_
 
 ## JWT Claims
 
-The plugin expects JWT tokens with the following claims:
+The plugin expects JWT tokens with standard claims:
 
 ```json
 {
-  "sub": "user_id", // User ID
-  "jti": "api_key_id", // API Key ID (used for blacklist lookup)
-  "tier": "BASIC", // User tier
-  "scope": "api_access", // Token scope
+  "sub": "user_123", // Subject (user ID)
+  "jti": "api_key_abc123", // JWT ID (used for blacklist lookup)
+  "iss": "https://auth.example.com", // Issuer
+  "aud": ["https://api.example.com"], // Audience
   "exp": 1640995200, // Expiration timestamp
-  "iat": 1640991600 // Issued at timestamp
+  "iat": 1640991600, // Issued at timestamp
+  "tier": "PREMIUM", // Custom: user tier
+  "scope": "api_access", // Custom: access scope
+  "org_id": "org_456" // Custom: organization ID
 }
 ```
 
-The `jti` (JWT ID) claim is used as the API key identifier for blacklist checks.
+**Critical:** The `jti` (JWT ID) claim is used as the API key identifier for blacklist checks.
 
-## Redis Key Format
+## Redis Blacklist Format
 
-Blacklisted API keys are stored in Redis using this pattern:
+Blacklisted tokens are stored in Redis with this key pattern:
 
 ```
-BLACKLIST:key:{api_key_id}
+{blacklist_prefix}{jti}
 ```
 
-The value can be a reason code like:
+Example:
 
-- `cancelled` - Subscription cancelled (7 days TTL)
-- `expired` - One-time payment expired (30 days TTL)
-- `downgraded` - Subscription downgraded (1 day TTL)
+```
+BLACKLIST:key:api_key_abc123
+```
 
-### Sample Error Response
+The value stores the revocation reason:
 
-When an API key is blacklisted, the plugin returns:
+- `cancelled` - Subscription cancelled
+- `expired` - Payment/subscription expired
+- `downgraded` - Subscription downgraded
+- `security` - Security incident
+- `abuse` - Terms of service violation
+
+### TTL Examples
+
+```redis
+# Temporary blacklist for downgrade (24 hours)
+SETEX BLACKLIST:key:api_key_123 86400 "downgraded"
+
+# Subscription cancelled (7 days)
+SETEX BLACKLIST:key:api_key_456 604800 "cancelled"
+
+# Permanent blacklist (security incident)
+SET BLACKLIST:key:api_key_789 "security"
+```
+
+## User Context & Placeholders
+
+After successful authentication, the plugin populates Caddy placeholders:
+
+```caddy
+# Basic user information
+{http.auth.user.id}              # User ID from JWT
+{http.auth.user.jti}             # JWT ID (API key ID)
+{http.auth.user.authenticated}   # "true"
+
+# Custom metadata (from meta_claims)
+{http.auth.user.tier}            # User tier
+{http.auth.user.scope}           # Access scope
+{http.auth.user.organization}    # Organization ID
+```
+
+Example usage:
+
+```caddy
+jwt_blacklist {
+    user_claims sub username
+    meta_claims "tier" "role->user_role" "org->organization"
+}
+
+# Use in responses
+respond "Welcome {http.auth.user.username} (Role: {http.auth.user.user_role})"
+
+# Use in logging
+log {
+    output file /var/log/api.log
+    format single_field common_log
+    level INFO
+}
+```
+
+## Error Responses
+
+### Blacklisted Token
 
 ```json
 {
@@ -203,139 +305,225 @@ When an API key is blacklisted, the plugin returns:
 }
 ```
 
-**Headers Set:**
+### Invalid/Missing Token
 
-- `X-Error-Type: api_key_blacklisted`
-- `WWW-Authenticate: Bearer`
+```json
+{
+  "error": "invalid_token",
+  "message": "Invalid authentication token",
+  "code": 401
+}
+```
 
-## Integration with Webapp
+### Redis Unavailable (Fail Closed)
 
-This plugin is designed to work with the existing Chandra Station webapp blacklist management:
+```json
+{
+  "error": "internal_error",
+  "message": "Authentication service unavailable",
+  "code": 500
+}
+```
 
-### Subscription Cancellation
+## Integration Examples
+
+### Backend Integration (TypeScript/Node.js)
 
 ```typescript
-// Blacklist immediately when subscription is cancelled
-const blacklistPromises = apiKeys.map((key) =>
-  redis.setEx(`BLACKLIST:key:${key.id}`, 86400 * 7, "cancelled")
-);
+import Redis from "ioredis";
+
+const redis = new Redis(process.env.REDIS_URL);
+
+// Blacklist API key immediately on subscription cancellation
+async function blacklistApiKey(
+  apiKeyId: string,
+  reason: string,
+  ttlDays: number = 7
+) {
+  const ttlSeconds = ttlDays * 24 * 60 * 60;
+  await redis.setex(`BLACKLIST:key:${apiKeyId}`, ttlSeconds, reason);
+  console.log(`Blacklisted API key ${apiKeyId} for ${reason}`);
+}
+
+// Usage examples
+await blacklistApiKey("api_key_123", "cancelled", 7); // 7 days
+await blacklistApiKey("api_key_456", "expired", 30); // 30 days
+await blacklistApiKey("api_key_789", "downgraded", 1); // 1 day
+
+// Remove from blacklist (e.g., subscription reactivated)
+async function unblacklistApiKey(apiKeyId: string) {
+  await redis.del(`BLACKLIST:key:${apiKeyId}`);
+}
 ```
 
-### One-Time Payment Expiration
+### Webhook Integration
 
 ```typescript
-// Background job for expired payments
-const blacklistPromises = apiKeys.map((key) =>
-  redis.setEx(`BLACKLIST:key:${key.id}`, 86400 * 30, "expired")
-);
+// Subscription cancelled webhook
+app.post("/webhooks/subscription-cancelled", async (req, res) => {
+  const { userId, subscriptionId } = req.body;
+
+  // Get all API keys for user
+  const apiKeys = await db.apiKeys.findMany({ where: { userId } });
+
+  // Blacklist all API keys
+  const blacklistPromises = apiKeys.map((key) =>
+    redis.setex(`BLACKLIST:key:${key.jti}`, 86400 * 7, "cancelled")
+  );
+
+  await Promise.all(blacklistPromises);
+  res.json({ success: true, blacklisted: apiKeys.length });
+});
 ```
 
-### Subscription Downgrades
+## Architecture
 
-```typescript
-// Temporary blacklist for tier changes
-const blacklistPromises = apiKeys.map((key) =>
-  redis.setEx(`BLACKLIST:key:${key.id}`, 86400 * 1, "downgraded")
-);
+This plugin implements a **blacklist-first architecture** for optimal performance:
+
+```
+1. Extract JWT token from request
+2. Parse JWT (without verification) to get `jti`
+3. Check Redis blacklist (O(1) lookup)
+4. If blacklisted → return 401 immediately
+5. If not blacklisted → perform full JWT validation
+6. If valid → populate user context and continue
 ```
 
-## Testing
+This design ensures:
 
-Run tests with Redis available on localhost:6379:
+- **Fast rejection** of blacklisted tokens (~0.1ms)
+- **Expensive validation** only for non-blacklisted tokens
+- **Security** - no way to bypass blacklist with valid signatures
 
-```bash
-# Start Redis for testing
-docker run -d -p 6379:6379 redis:alpine
+## Performance
 
-# Run tests
-cd caddy-jwt-blacklist
-go test -v ./...
-```
+- **Latency**: ~0.1-0.5ms per request
+- **Memory**: Minimal overhead with connection pooling
+- **Redis operations**: Single `EXISTS` check per request
+- **Throughput**: Tested at >10,000 RPS with negligible impact
 
-The tests include:
+## Development & Testing
 
-- Unit tests for token extraction and JWT parsing
-- Integration tests with Redis
-- Webapp blacklist pattern testing
-- Error handling and failover scenarios
-
-## Requirements
-
-- **Caddy:** v2.8.0 or higher
-- **Go:** 1.21 or higher
-- **Redis:** 6.0 or higher
-- **JWT Secret:** Shared secret for token validation
-
-## Building from Source
+### Setup Development Environment
 
 ```bash
 git clone https://github.com/chalabi2/caddy-jwt-blacklist
 cd caddy-jwt-blacklist
 make deps
-make xcaddy-build
 ```
 
-## Testing
-
-Run the test suite:
-
-```bash
-make test        # Run unit tests
-make test-all    # Run all tests including integration
-make benchmark   # Run benchmarks
-make ci          # Run all CI checks
-```
-
-### Integration Testing
+### Run Tests
 
 ```bash
 # Start Redis for testing
 make redis-start
 
-# Run integration tests
-make xcaddy-test
+# Run all tests
+make test-all
 
-# Run the demo test script
-./test.sh
+# Run with coverage
+make test-coverage
 
-# Stop Redis when done
+# Run benchmarks
+make benchmark
+
+# Stop Redis
 make redis-stop
 ```
 
-## Performance
-
-- **Latency**: ~0.1-0.5ms per request
-- **Memory**: Minimal overhead (connection pooling)
-- **Redis operations**: Single EXISTS check per request
-- **Fail-open**: Requests continue if Redis is unavailable
-
-## Monitoring
-
-The plugin logs important events at different levels:
+### Integration Testing
 
 ```bash
-# View plugin logs
-./caddy run --config example-configs/Caddyfile 2>&1 | grep jwt_blacklist
+# Build custom Caddy binary
+make xcaddy-build
 
-# Sample log output:
-INFO: JWT blacklist middleware provisioned
-INFO: Blocked blacklisted API key api_key_id=ak_123 user_id=user_456
-WARN: Redis blacklist check failed, failing open
+# Run integration test script
+./test.sh
+
+# Test with example configs
+./caddy run --config example-configs/Caddyfile
 ```
+
+## Migration from Separate Modules
+
+If you're currently using `ggicci/caddy-jwt` + this blacklist plugin separately:
+
+### Before (Two Modules)
+
+```caddy
+{
+    order jwt_blacklist before jwtauth
+}
+
+api.example.com {
+    jwt_blacklist {
+        redis_addr {env.REDIS_URL}
+        # ... blacklist config
+    }
+
+    jwtauth {
+        sign_key {env.JWT_SECRET}
+        # ... jwt config
+    }
+}
+```
+
+### After (Unified Module)
+
+```caddy
+api.example.com {
+    jwt_blacklist {
+        # Redis settings
+        redis_addr {env.REDIS_URL}
+
+        # JWT settings (integrated)
+        sign_key {env.JWT_SECRET}
+        sign_alg HS256
+        from_header Authorization
+        user_claims sub
+    }
+}
+```
+
+**Benefits:**
+
+- ✅ Single module to manage
+- ✅ Better performance (blacklist-first)
+- ✅ No middleware ordering issues
+- ✅ Simplified configuration
+- ✅ Reduced build dependencies
+
+## Requirements
+
+- **Caddy:** v2.8.0 or higher
+- **Go:** 1.22 or higher
+- **Redis:** 6.0 or higher
 
 ## License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) file.
+
+## Acknowledgments
+
+This plugin integrates JWT authentication functionality from [ggicci/caddy-jwt](https://github.com/ggicci/caddy-jwt) by @ggicci with our Redis-based blacklist system. We extend our gratitude to the original authors for their excellent JWT implementation.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass
+5. Submit a pull request
 
 ## Bug Reports
 
-When reporting bugs, include:
+When reporting bugs, please include:
 
-- Caddy version
+- Caddy version (`./caddy version`)
 - Plugin version
 - Configuration (Caddyfile or JSON)
-- Redis version and configuration
+- Redis version and setup
 - JWT token format and claims
 - Steps to reproduce
 - Expected vs actual behavior
-- Relevant logs
+- Relevant logs with `debug` level enabled

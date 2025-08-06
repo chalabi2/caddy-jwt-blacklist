@@ -1,14 +1,8 @@
-# Comprehensive JWT Blacklist Configuration
-# Demonstrates proper middleware ordering and integration with JWT authentication
+# Caddy JWT Blacklist Plugin - Unified JWT Authentication and Blacklist
+# This configuration demonstrates the integrated JWT authentication and blacklist functionality
 
 {
 	admin localhost:2019
-	
-	# CRITICAL: Define middleware execution order
-	# jwt_blacklist MUST run before jwtauth to catch blacklisted tokens early
-	order jwt_blacklist before jwtauth
-	order jwtauth before rate_limit
-	order rate_limit before reverse_proxy
 	
 	log {
 		output stdout
@@ -17,119 +11,111 @@
 	}
 }
 
-# Example 1: Standalone JWT blacklist testing (no authentication required)
+# Example 1: Basic JWT authentication with blacklist checking
 localhost:8080 {
-	route {
-		# JWT Blacklist middleware - works with both local and TLS Redis
-		jwt_blacklist {
-			redis_addr {env.REDIS_URL}        # e.g., localhost:6379 or redis-cloud.com:12345
-			redis_password {env.REDIS_PASSWORD}
-			redis_db 0
-			jwt_secret {env.JWT_SECRET}
-			blacklist_prefix "BLACKLIST:key:"
-			fail_open true
-			timeout 50ms
-			log_blocked true
-			
-			# TLS configuration for cloud Redis (Upstash, ElastiCache, etc.)
-			tls {
-				enabled true
-				min_version "1.2"
-			}
+	jwt_blacklist {
+		# Redis configuration
+		redis_addr {env.REDIS_URL}
+		redis_password {env.REDIS_PASSWORD}
+		redis_db 0
+		blacklist_prefix "BLACKLIST:key:"
+		timeout 50ms
+		fail_open true
+		log_blocked true
+		
+		# TLS configuration for cloud Redis (optional)
+		tls {
+			enabled true
+			min_version "1.2"
 		}
 		
-		# Test endpoints - these will process any JWT tokens in the request
-		handle /health {
-			respond `{"status":"ok","service":"jwt-blacklist","timestamp":"{time.now.unix}"}`
-		}
+		# JWT authentication configuration
+		sign_key {env.JWT_SECRET}
+		sign_alg HS256
 		
-		handle /api/* {
-			respond `{"message":"API access granted","path":"{uri}","timestamp":"{time.now.unix}"}`
-		}
+		# Token extraction sources (in order of precedence)
+		from_query api_key access_token token
+		from_header Authorization X-Api-Token X-API-Key
+		from_cookies session_token
 		
-		handle {
-			respond `{"message":"JWT Blacklist Test Server","endpoints":["/health","/api/*"],"note":"Include Bearer token or api_key parameter to test blacklist functionality"}`
-		}
+		# JWT claims configuration
+		user_claims sub
+		meta_claims "tier" "scope"
+		
+		# Optional: JWK support for asymmetric keys
+		# jwk_url https://your-auth-server.com/.well-known/jwks.json
+		
+		# Optional: Skip JWT signature verification (not recommended for production)
+		# skip_verification
+		
+		# Optional: Validate issuer and audience
+		# issuer_whitelist https://your-auth-server.com
+		# audience_whitelist https://api.example.com
 	}
 	
-	# Enhanced error handling for different scenarios
+	# Your application routes
+	handle /health {
+		respond `{"status":"ok","service":"jwt-blacklist","user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}","timestamp":"{time.now.unix}"}`
+	}
+	
+	handle /api/* {
+		respond `{"message":"API access granted","user_id":"{http.auth.user.id}","tier":"{http.auth.user.tier}","path":"{uri}","timestamp":"{time.now.unix}"}`
+	}
+	
+	handle {
+		respond `{"message":"JWT Authentication + Blacklist Server","endpoints":["/health","/api/*"],"note":"Include Bearer token, api_key parameter, or session cookie to authenticate"}`
+	}
+	
+	# Error handling
 	handle_errors {
 		@blacklist_error expression `{http.error.status_code} == 401 && "blacklisted" in {http.error.message}`
-		header @blacklist_error {
-			X-Error-Type "api_key_blacklisted"
-			WWW-Authenticate "Bearer"
-		}
 		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled due to subscription changes","code":401,"details":"Please check your subscription status or generate a new API key"}` 401
 		
-		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}`
+		@auth_error expression `{http.error.status_code} == 401`
+		respond @auth_error `{"error":"unauthorized","message":"Invalid or missing API key","code":401,"details":"Please provide a valid JWT token"}` 401
+		
+		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}` {http.error.status_code}
 	}
 }
 
-# Example 2: Full production setup with JWT authentication + blacklist
-api.localhost:8080 {
-	# JWT Authentication configuration (this would normally be your existing jwtauth setup)
-	# Note: This requires the jwtauth plugin to be built into Caddy
-	# jwtauth {
-	#     sign_key {env.JWT_SECRET}
-	#     sign_alg HS256
-	#     from_query api_key access_token token
-	#     from_header Authorization X-Api-Token X-API-Key
-	#     from_cookies session_token
-	#     user_claims sub jti uid user_id
-	#     meta_claims "tier" "scope"
-	# }
-	
-	route {
-		# Step 1: JWT Blacklist Check (runs BEFORE jwtauth due to order directive)
-		jwt_blacklist {
-			redis_addr {env.REDIS_URL}
-			redis_password {env.REDIS_PASSWORD}
-			redis_db 0
-			jwt_secret {env.JWT_SECRET}
-			blacklist_prefix "BLACKLIST:key:"
-			fail_open true
-			timeout 50ms
-			log_blocked true
-			
-			tls {
-				enabled true
-				min_version "1.2"
-			}
-		}
+# Example 2: Production API server with advanced JWT configuration
+api.example.com {
+	jwt_blacklist {
+		redis_addr {env.REDIS_URL}
+		redis_password {env.REDIS_PASSWORD}
+		redis_db 0
+		blacklist_prefix "BLACKLIST:key:"
+		timeout 100ms
+		fail_open false  # Fail closed in production
+		log_blocked true
 		
-		# Step 2: JWT Authentication (handled by jwtauth plugin if available)
-		# Step 3: Rate limiting (handled by rate_limit plugin if available)
-		# Step 4: Your application logic
+		# Production JWT configuration
+		sign_key {env.JWT_SECRET}
+		sign_alg HS256
 		
-		handle /status {
-			respond `{"status":"ok","service":"chandra-station-private","timestamp":"{time.now.unix}","note":"This endpoint would normally require valid JWT authentication"}`
-		}
+		# Multiple token sources
+		from_query api_key access_token
+		from_header Authorization X-API-Key
+		from_cookies auth_session
 		
-		handle /api/* {
-			respond `{"message":"Protected API endpoint","path":"{uri}","timestamp":"{time.now.unix}","note":"This would be your actual API"}`
-		}
+		# Extract user information
+		user_claims sub uid user_id
+		meta_claims "tier->user_tier" "scope->access_scope" "org_id->organization"
 		
-		handle {
-			respond `{"error":"not_found","message":"Endpoint not found"}` 404
-		}
+		# Validation
+		issuer_whitelist https://auth.example.com
+		audience_whitelist https://api.example.com
 	}
 	
-	# Production-grade error handling
-	handle_errors {
-		@blacklist_error expression `{http.error.status_code} == 401 && "blacklisted" in {http.error.message}`
-		header @blacklist_error {
-			X-Error-Type "api_key_blacklisted"
-			WWW-Authenticate "Bearer"
-		}
-		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled due to subscription changes","code":401,"details":"Please check your subscription status or generate a new API key"}` 401
-
-		@auth_error expression `{http.error.status_code} == 401`
-		header @auth_error {
-			X-Error-Type "authentication_failed"
-			WWW-Authenticate "Bearer"
-		}
-		respond @auth_error `{"error":"unauthorized","message":"Invalid or missing API key","code":401}` 401
-
-		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}` {http.error.status_code}
+	# API routes with user context available
+	route /v1/* {
+		respond `{"api_version":"v1","user_id":"{http.auth.user.id}","tier":"{http.auth.user.user_tier}","scope":"{http.auth.user.access_scope}","path":"{uri}"}`
 	}
+	
+	route /admin/* {
+		# Admin endpoints could have additional authorization logic here
+		respond `{"admin_access":"granted","user_id":"{http.auth.user.id}","organization":"{http.auth.user.organization}"}`
+	}
+	
+	respond `{"error":"not_found","message":"API endpoint not found"}` 404
 }
