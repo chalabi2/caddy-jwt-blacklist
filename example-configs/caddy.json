@@ -17,6 +17,8 @@
   },
   "apps": {
     "http": {
+      "http_port": 80,
+      "https_port": 443,
       "servers": {
         "srv0": {
           "listen": [":8080"],
@@ -43,7 +45,11 @@
                             "blacklist_prefix": "BLACKLIST:key:",
                             "fail_open": true,
                             "timeout": "50ms",
-                            "log_blocked": true
+                            "log_blocked": true,
+                            "redis_tls": {
+                              "enabled": true,
+                              "min_version": "1.2"
+                            }
                           }
                         }
                       ]

@@ -426,7 +426,7 @@ func TestRedisFailure(t *testing.T) {
 	}
 
 	// Initialize Redis client (this will fail, but we handle it gracefully)
-	redis, err := NewRedisClient("localhost:9999", "", 0, jb.logger)
+	redis, err := NewRedisClient("localhost:9999", "", 0, nil, jb.logger)
 	if err != nil {
 		// Expected - Redis not available
 		// For this test, we'll simulate the scenario in the middleware

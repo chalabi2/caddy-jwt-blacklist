@@ -277,7 +277,7 @@ func TestWebappBlacklistPatterns(t *testing.T) {
 			}
 
 			// Verify the pattern is detected correctly
-			redis, err := NewRedisClient(testRedis.addr, "", 15, zap.NewNop())
+			redis, err := NewRedisClient(testRedis.addr, "", 15, nil, zap.NewNop())
 			if err != nil {
 				t.Fatalf("Failed to create Redis client: %v", err)
 			}

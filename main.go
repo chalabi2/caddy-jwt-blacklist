@@ -10,6 +10,8 @@ import (
 func init() {
 	caddy.RegisterModule(JWTBlacklist{})
 	httpcaddyfile.RegisterHandlerDirective("jwt_blacklist", parseCaddyfile)
+	// Register default ordering - jwt_blacklist should run early in the chain
+	httpcaddyfile.RegisterDirectiveOrder("jwt_blacklist", httpcaddyfile.Before, "header")
 }
 
 // Interface guards

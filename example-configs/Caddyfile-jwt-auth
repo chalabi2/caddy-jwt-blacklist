@@ -1,8 +1,19 @@
-# JWT Authentication + Blacklist Integration
-# Shows how to use JWT blacklist with JWT authentication module
+# JWT Authentication + Blacklist Integration Example
+# Complete production flow: blacklist → authentication → rate limiting → backend
+#
+# Required modules:
+# - github.com/chalabi2/caddy-jwt-blacklist (this module)
+# - github.com/ggicci/caddy-jwt@v1.1.0 (for JWT authentication)
+# - github.com/chalabi2/caddy-ratelimit (for rate limiting)
 
 {
 	admin localhost:2019
+	
+	# CRITICAL: Middleware execution order
+	# jwt_blacklist MUST run before jwtauth to block blacklisted tokens
+	order jwt_blacklist before jwtauth
+	order jwtauth before rate_limit
+	order rate_limit before reverse_proxy
 	
 	log {
 		output stdout
@@ -26,7 +37,7 @@ api.example.com {
 			respond "" 204
 		}
 
-		# Step 1: JWT Blacklist Check (before authentication)
+		# Step 1: JWT Blacklist Check (executes FIRST due to order directive)
 		jwt_blacklist {
 			redis_addr {env.REDIS_URL}
 			redis_password {env.REDIS_PASSWORD}
@@ -37,12 +48,11 @@ api.example.com {
 			timeout 50ms
 			log_blocked true
 			
-			# Optional TLS for production Redis
-			# tls {
-			#     enabled true
-			#     min_version "1.2"
-			#     server_name {env.REDIS_HOST}
-			# }
+			# TLS for production Redis (Upstash, ElastiCache, etc.)
+			tls {
+				enabled true
+				min_version "1.2"
+			}
 		}
 
 		# Step 2: JWT Authentication

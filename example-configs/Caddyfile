@@ -1,8 +1,14 @@
-# Basic JWT Blacklist Configuration
-# Shows JWT blacklist functionality with both local and TLS Redis support
+# Comprehensive JWT Blacklist Configuration
+# Demonstrates proper middleware ordering and integration with JWT authentication
 
 {
 	admin localhost:2019
+	
+	# CRITICAL: Define middleware execution order
+	# jwt_blacklist MUST run before jwtauth to catch blacklisted tokens early
+	order jwt_blacklist before jwtauth
+	order jwtauth before rate_limit
+	order rate_limit before reverse_proxy
 	
 	log {
 		output stdout
@@ -11,7 +17,7 @@
 	}
 }
 
-# Basic JWT blacklist example
+# Example 1: Standalone JWT blacklist testing (no authentication required)
 localhost:8080 {
 	route {
 		# JWT Blacklist middleware - works with both local and TLS Redis
@@ -25,14 +31,14 @@ localhost:8080 {
 			timeout 50ms
 			log_blocked true
 			
-			# Optional TLS configuration - uncomment for TLS Redis
-			# tls {
-			#     enabled true
-			#     min_version "1.2"
-			# }
+			# TLS configuration for cloud Redis (Upstash, ElastiCache, etc.)
+			tls {
+				enabled true
+				min_version "1.2"
+			}
 		}
 		
-		# Test endpoints
+		# Test endpoints - these will process any JWT tokens in the request
 		handle /health {
 			respond `{"status":"ok","service":"jwt-blacklist","timestamp":"{time.now.unix}"}`
 		}
@@ -42,15 +48,88 @@ localhost:8080 {
 		}
 		
 		handle {
-			respond `{"message":"JWT Blacklist Test Server","endpoints":["/health","/api/*"]}`
+			respond `{"message":"JWT Blacklist Test Server","endpoints":["/health","/api/*"],"note":"Include Bearer token or api_key parameter to test blacklist functionality"}`
 		}
 	}
 	
-	# Error handling for blacklisted tokens
+	# Enhanced error handling for different scenarios
 	handle_errors {
-		@blacklist_error expression `{http.error.status_code} == 401 && {http.error.message} contains "blacklisted"`
-		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled","code":401}` 401
+		@blacklist_error expression `{http.error.status_code} == 401 && "blacklisted" in {http.error.message}`
+		header @blacklist_error {
+			X-Error-Type "api_key_blacklisted"
+			WWW-Authenticate "Bearer"
+		}
+		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled due to subscription changes","code":401,"details":"Please check your subscription status or generate a new API key"}` 401
 		
 		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}`
+	}
+}
+
+# Example 2: Full production setup with JWT authentication + blacklist
+api.localhost:8080 {
+	# JWT Authentication configuration (this would normally be your existing jwtauth setup)
+	# Note: This requires the jwtauth plugin to be built into Caddy
+	# jwtauth {
+	#     sign_key {env.JWT_SECRET}
+	#     sign_alg HS256
+	#     from_query api_key access_token token
+	#     from_header Authorization X-Api-Token X-API-Key
+	#     from_cookies session_token
+	#     user_claims sub jti uid user_id
+	#     meta_claims "tier" "scope"
+	# }
+	
+	route {
+		# Step 1: JWT Blacklist Check (runs BEFORE jwtauth due to order directive)
+		jwt_blacklist {
+			redis_addr {env.REDIS_URL}
+			redis_password {env.REDIS_PASSWORD}
+			redis_db 0
+			jwt_secret {env.JWT_SECRET}
+			blacklist_prefix "BLACKLIST:key:"
+			fail_open true
+			timeout 50ms
+			log_blocked true
+			
+			tls {
+				enabled true
+				min_version "1.2"
+			}
+		}
+		
+		# Step 2: JWT Authentication (handled by jwtauth plugin if available)
+		# Step 3: Rate limiting (handled by rate_limit plugin if available)
+		# Step 4: Your application logic
+		
+		handle /status {
+			respond `{"status":"ok","service":"chandra-station-private","timestamp":"{time.now.unix}","note":"This endpoint would normally require valid JWT authentication"}`
+		}
+		
+		handle /api/* {
+			respond `{"message":"Protected API endpoint","path":"{uri}","timestamp":"{time.now.unix}","note":"This would be your actual API"}`
+		}
+		
+		handle {
+			respond `{"error":"not_found","message":"Endpoint not found"}` 404
+		}
+	}
+	
+	# Production-grade error handling
+	handle_errors {
+		@blacklist_error expression `{http.error.status_code} == 401 && "blacklisted" in {http.error.message}`
+		header @blacklist_error {
+			X-Error-Type "api_key_blacklisted"
+			WWW-Authenticate "Bearer"
+		}
+		respond @blacklist_error `{"error":"api_key_blacklisted","message":"API key has been disabled due to subscription changes","code":401,"details":"Please check your subscription status or generate a new API key"}` 401
+
+		@auth_error expression `{http.error.status_code} == 401`
+		header @auth_error {
+			X-Error-Type "authentication_failed"
+			WWW-Authenticate "Bearer"
+		}
+		respond @auth_error `{"error":"unauthorized","message":"Invalid or missing API key","code":401}` 401
+
+		respond `{"error":"{http.error.status_code}","message":"{http.error.status_text}"}` {http.error.status_code}
 	}
 }
