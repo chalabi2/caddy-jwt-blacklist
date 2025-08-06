@@ -10,9 +10,10 @@ import (
 func init() {
 	caddy.RegisterModule(JWTBlacklist{})
 	httpcaddyfile.RegisterHandlerDirective("jwt_blacklist", parseCaddyfile)
-	// Register default ordering - jwt_blacklist should run early in the chain
-	// Note: Use authentication instead of jwtauth for compatibility
-	httpcaddyfile.RegisterDirectiveOrder("jwt_blacklist", httpcaddyfile.Before, "authentication")
+	// Register default ordering - jwt_blacklist should run before any authentication
+	// This ensures blacklist checking happens before JWT validation
+	// We use "rewrite" as anchor since it's reliably early in the middleware chain
+	httpcaddyfile.RegisterDirectiveOrder("jwt_blacklist", httpcaddyfile.After, "rewrite")
 }
 
 // Interface guards
