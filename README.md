@@ -1,4 +1,4 @@
-# Caddy JWT Blacklist Plugin
+# Stateful JWT Auth
 
 [![codecov](https://codecov.io/gh/chalabi2/caddy-jwt-blacklist/graph/badge.svg?token=LSORQKOL2R)](https://codecov.io/gh/chalabi2/caddy-jwt-blacklist)
 [![Go Report Card](https://goreportcard.com/badge/github.com/chalabi2/caddy-jwt-blacklist)](https://goreportcard.com/report/github.com/chalabi2/caddy-jwt-blacklist)
