@@ -55,7 +55,7 @@ jobs:
       - name: Validate example Caddyfile
         run: ./caddy validate --config example-configs/Caddyfile --adapter caddyfile
         env:
-          JWT_SECRET: "test-secret-key-for-validation-only"
+          JWT_SECRET: "dGVzdC1zZWNyZXQta2V5LWZvci12YWxpZGF0aW9uLW9ubHk="
           REDIS_PASSWORD: "test-password"
 
       - name: Validate example JSON config
@@ -112,5 +112,5 @@ jobs:
 
           echo "All configurations validated successfully!"
         env:
-          JWT_SECRET: "test-secret-key-for-validation-only"
+          JWT_SECRET: "dGVzdC1zZWNyZXQta2V5LWZvci12YWxpZGF0aW9uLW9ubHk="
           REDIS_PASSWORD: "test-password"

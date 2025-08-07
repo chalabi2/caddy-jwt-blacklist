@@ -193,6 +193,7 @@ func validateJWTConfig(jc *JWTConfig, logger *zap.Logger) error {
 func validateSignatureKeys(jc *JWTConfig, logger *zap.Logger) error {
 	if usingJWK(jc) {
 		setupJWKLoader(jc, logger)
+		return nil // No need to validate sign_key when using JWK
 	}
 
 	keyBytes, asymmetric, err := parseSignKey(jc.SignKey)
