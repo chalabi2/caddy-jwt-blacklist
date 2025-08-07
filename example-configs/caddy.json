@@ -206,67 +206,73 @@
                         }
                       ]
                     }
-                  ],
-                  "handle_errors": [
-                    {
-                      "match": {
-                        "expression": "{http.error.status_code} == 401 && \"blacklisted\" in {http.error.message}"
-                      },
-                      "handle": [
-                        {
-                          "handler": "headers",
-                          "response": {
-                            "set": {
-                              "X-Error-Type": ["api_key_blacklisted"],
-                              "WWW-Authenticate": ["Bearer"]
-                            }
-                          }
-                        },
-                        {
-                          "handler": "static_response",
-                          "body": "{\"error\":\"api_key_blacklisted\",\"message\":\"API key has been disabled\",\"code\":401}",
-                          "status_code": 401
-                        }
-                      ]
-                    },
-                    {
-                      "match": {
-                        "expression": "{http.error.status_code} == 401"
-                      },
-                      "handle": [
-                        {
-                          "handler": "headers",
-                          "response": {
-                            "set": {
-                              "X-Error-Type": ["authentication_failed"],
-                              "WWW-Authenticate": ["Bearer"]
-                            }
-                          }
-                        },
-                        {
-                          "handler": "static_response",
-                          "body": "{\"error\":\"unauthorized\",\"message\":\"Invalid or missing API key\",\"code\":401}",
-                          "status_code": 401
-                        }
-                      ]
-                    },
-                    {
-                      "handle": [
-                        {
-                          "handler": "static_response",
-                          "body": "{\"error\":\"{http.error.status_code}\",\"message\":\"{http.error.status_text}\"}",
-                          "status_code": "{http.error.status_code}"
-                        }
-                      ]
-                    }
                   ]
                 }
               ]
             }
-          ]
+          ],
+          "errors": {
+            "routes": [
+              {
+                "match": [
+                  {
+                    "expression": "{http.error.status_code} == 401 && \"blacklisted\" in {http.error.message}"
+                  }
+                ],
+                "handle": [
+                  {
+                    "handler": "headers",
+                    "response": {
+                      "set": {
+                        "X-Error-Type": ["api_key_blacklisted"],
+                        "WWW-Authenticate": ["Bearer"]
+                      }
+                    }
+                  },
+                  {
+                    "handler": "static_response",
+                    "body": "{\"error\":\"api_key_blacklisted\",\"message\":\"API key has been disabled\",\"code\":401}",
+                    "status_code": 401
+                  }
+                ]
+              },
+              {
+                "match": [
+                  {
+                    "expression": "{http.error.status_code} == 401"
+                  }
+                ],
+                "handle": [
+                  {
+                    "handler": "headers",
+                    "response": {
+                      "set": {
+                        "X-Error-Type": ["authentication_failed"],
+                        "WWW-Authenticate": ["Bearer"]
+                      }
+                    }
+                  },
+                  {
+                    "handler": "static_response",
+                    "body": "{\"error\":\"unauthorized\",\"message\":\"Invalid or missing API key\",\"code\":401}",
+                    "status_code": 401
+                  }
+                ]
+              },
+              {
+                "handle": [
+                  {
+                    "handler": "static_response",
+                    "body": "{\"error\":\"{http.error.status_code}\",\"message\":\"{http.error.status_text}\"}",
+                    "status_code": "{http.error.status_code}"
+                  }
+                ]
+              }
+            ]
+          }
         },
         "jwt_only": {
-          "listen": [":443"],
+          "listen": [":8443"],
           "routes": [
             {
               "match": [
@@ -373,34 +379,38 @@
                         }
                       ]
                     }
-                  ],
-                  "handle_errors": [
-                    {
-                      "match": {
-                        "expression": "{http.error.status_code} == 401"
-                      },
-                      "handle": [
-                        {
-                          "handler": "static_response",
-                          "body": "{\"error\":\"unauthorized\",\"message\":\"Invalid JWT token\",\"code\":401}",
-                          "status_code": 401
-                        }
-                      ]
-                    },
-                    {
-                      "handle": [
-                        {
-                          "handler": "static_response",
-                          "body": "{\"error\":\"{http.error.status_code}\",\"message\":\"{http.error.status_text}\"}",
-                          "status_code": "{http.error.status_code}"
-                        }
-                      ]
-                    }
                   ]
                 }
               ]
             }
-          ]
+          ],
+          "errors": {
+            "routes": [
+              {
+                "match": [
+                  {
+                    "expression": "{http.error.status_code} == 401"
+                  }
+                ],
+                "handle": [
+                  {
+                    "handler": "static_response",
+                    "body": "{\"error\":\"unauthorized\",\"message\":\"Invalid JWT token\",\"code\":401}",
+                    "status_code": 401
+                  }
+                ]
+              },
+              {
+                "handle": [
+                  {
+                    "handler": "static_response",
+                    "body": "{\"error\":\"{http.error.status_code}\",\"message\":\"{http.error.status_text}\"}",
+                    "status_code": "{http.error.status_code}"
+                  }
+                ]
+              }
+            ]
+          }
         }
       }
     }
