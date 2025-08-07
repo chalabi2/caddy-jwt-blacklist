@@ -60,6 +60,9 @@ jobs:
 
       - name: Validate example JSON config
         run: ./caddy validate --config example-configs/caddy.json
+        env:
+          JWT_SECRET: "dGVzdC1zZWNyZXQta2V5LWZvci12YWxpZGF0aW9uLW9ubHk="
+          REDIS_PASSWORD: "test-password"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
