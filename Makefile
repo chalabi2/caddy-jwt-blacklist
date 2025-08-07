@@ -9,7 +9,7 @@ GOFMT=gofmt
 GOLINT=golangci-lint
 
 # Binary name
-BINARY_NAME=caddy-jwt-blacklist
+BINARY_NAME=caddy-stateful-jwt-auth
 BINARY_UNIX=$(BINARY_NAME)_unix
 
 # Build info
@@ -90,10 +90,10 @@ update: ## Update dependencies
 
 ## Caddy Integration
 xcaddy-build: ## Build Caddy with this plugin using xcaddy
-	xcaddy build --with github.com/chalabi2/caddy-jwt-blacklist=.
+	xcaddy build --with github.com/chalabi2/caddy-stateful-jwt-auth=.
 
 xcaddy-run: xcaddy-build ## Build and run Caddy with this plugin
-	@echo "Starting Caddy with JWT blacklist plugin..."
+	@echo "Starting Caddy with stateful JWT auth plugin..."
 	@echo "Make sure Redis is running on localhost:6379"
 	@echo "Set JWT_SECRET environment variable"
 	./caddy run --config ./example-configs/Caddyfile

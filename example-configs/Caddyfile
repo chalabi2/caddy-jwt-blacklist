@@ -15,7 +15,7 @@
 # Example 1: Basic JWT + Blacklist (Local Redis, no TLS)
 # =============================================================================
 localhost:8080 {
-	jwt_blacklist {
+	stateful_jwt {
 		# Redis configuration for blacklist checking
 		redis_addr localhost:6379
 		redis_password ""
@@ -44,7 +44,7 @@ localhost:8080 {
 api.example.com {
 	tls internal
 	
-	jwt_blacklist {
+	stateful_jwt {
 		# Redis with TLS configuration
 		redis_addr your-redis-host.com:6379
 		redis_password {env.REDIS_PASSWORD}
@@ -135,7 +135,7 @@ jwt-only.example.com {
 	tls internal
 	
 	# JWT authentication WITHOUT Redis blacklisting
-	jwt_blacklist {
+	stateful_jwt {
 		# JWT configuration only
 		sign_key {env.JWT_SECRET}
 		sign_alg HS256

@@ -1,4 +1,4 @@
-module github.com/chalabi2/caddy-jwt-blacklist
+module github.com/chalabi2/caddy-stateful-jwt-auth
 
 go 1.21.0
 

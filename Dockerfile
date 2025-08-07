@@ -13,8 +13,8 @@ RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
 # Copy plugin source
 COPY . .
 
-# Build Caddy with the JWT blacklist plugin
-RUN xcaddy build --with github.com/chalabi2/caddy-jwt-blacklist=.
+# Build Caddy with the stateful JWT auth plugin
+RUN xcaddy build --with github.com/chalabi2/caddy-stateful-jwt-auth=.
 
 # Final stage
 FROM alpine:latest

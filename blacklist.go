@@ -26,7 +26,7 @@ type JWTBlacklist struct {
 // CaddyModule returns the Caddy module information
 func (JWTBlacklist) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
-		ID:  "http.handlers.jwt_blacklist",
+		ID:  "http.handlers.stateful_jwt",
 		New: func() caddy.Module { return new(JWTBlacklist) },
 	}
 }
@@ -86,7 +86,7 @@ func (jb *JWTBlacklist) Provision(ctx caddy.Context) error {
 				zap.Error(err))
 			jb.redis = nil
 		} else {
-			return fmt.Errorf("Redis connection failed: %w", err)
+			return fmt.Errorf("redis connection failed: %w", err)
 		}
 	}
 
@@ -162,7 +162,7 @@ func (jb *JWTBlacklist) ServeHTTP(w http.ResponseWriter, r *http.Request, next c
 
 	if jb.redis == nil {
 		// Redis client not available - handle based on FailOpen policy
-		err = fmt.Errorf("Redis client not initialized")
+		err = fmt.Errorf("redis client not initialized")
 	} else {
 		isBlacklisted, err = jb.redis.IsBlacklisted(ctx, apiKeyID, jb.Config.BlacklistPrefix)
 	}
@@ -267,7 +267,7 @@ func (jb *JWTBlacklist) setUserContext(r *http.Request, claims *Claims) {
 		if len(candidates) > 0 {
 			tokenString := normToken(candidates[0])
 			if token, err := jwt.ParseString(tokenString, jwt.WithVerify(false)); err == nil {
-				metadata := getUserMetadata(token, jb.Config.JWT.MetaClaims)
+				metadata := getUserMetadata(r.Context(), token, jb.Config.JWT.MetaClaims)
 				for key, value := range metadata {
 					repl.Set("http.auth.user."+key, value)
 				}

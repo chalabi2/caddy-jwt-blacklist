@@ -11,7 +11,7 @@ import (
 func TestUnmarshalCaddyfileNormalCase(t *testing.T) {
 	helper := httpcaddyfile.Helper{
 		Dispenser: caddyfile.NewTestDispenser(`
-	jwt_blacklist {
+	stateful_jwt {
 		redis_addr "localhost:6379"
 		redis_password "secret"
 		redis_db 1
@@ -82,7 +82,7 @@ func TestUnmarshalCaddyfileError(t *testing.T) {
 	// invalid sign_key: missing
 	helper := httpcaddyfile.Helper{
 		Dispenser: caddyfile.NewTestDispenser(`
-	jwt_blacklist {
+	stateful_jwt {
 		sign_key
 	}
 	`),
@@ -96,7 +96,7 @@ func TestUnmarshalCaddyfileError(t *testing.T) {
 	// invalid sign_alg: missing
 	helper = httpcaddyfile.Helper{
 		Dispenser: caddyfile.NewTestDispenser(`
-	jwt_blacklist {
+	stateful_jwt {
 		sign_alg
 	}`),
 	}
@@ -109,7 +109,7 @@ func TestUnmarshalCaddyfileError(t *testing.T) {
 	// invalid jwk_url: missing
 	helper = httpcaddyfile.Helper{
 		Dispenser: caddyfile.NewTestDispenser(`
-	jwt_blacklist {
+	stateful_jwt {
 		jwk_url
 	}`),
 	}
@@ -122,7 +122,7 @@ func TestUnmarshalCaddyfileError(t *testing.T) {
 	// invalid meta_claims: parse error
 	helper = httpcaddyfile.Helper{
 		Dispenser: caddyfile.NewTestDispenser(`
-	jwt_blacklist {
+	stateful_jwt {
 		redis_addr "localhost:6379"
 		sign_key "TkZMNSowQmMjOVU2RUB0bm1DJkU3U1VONkd3SGZMbVk="
 		meta_claims IsAdmin->is_admin->
@@ -137,7 +137,7 @@ func TestUnmarshalCaddyfileError(t *testing.T) {
 	// invalid meta_claims: duplicate
 	helper = httpcaddyfile.Helper{
 		Dispenser: caddyfile.NewTestDispenser(`
-	jwt_blacklist {
+	stateful_jwt {
 		redis_addr "localhost:6379"
 		sign_key "TkZMNSowQmMjOVU2RUB0bm1DJkU3U1VONkd3SGZMbVk="
 		meta_claims IsAdmin->is_admin Gender->gender IsAdmin->admin
@@ -152,7 +152,7 @@ func TestUnmarshalCaddyfileError(t *testing.T) {
 	// unrecognized option
 	helper = httpcaddyfile.Helper{
 		Dispenser: caddyfile.NewTestDispenser(`
-	jwt_blacklist {
+	stateful_jwt {
 		redis_addr "localhost:6379"
 		sign_key "TkZMNSowQmMjOVU2RUB0bm1DJkU3U1VONkd3SGZMbVk="
 		upstream http://192.168.1.4
@@ -197,7 +197,7 @@ func TestParseMetaClaim(t *testing.T) {
 func TestUnmarshalCaddyfileWithSkipVerification(t *testing.T) {
 	helper := httpcaddyfile.Helper{
 		Dispenser: caddyfile.NewTestDispenser(`
-	jwt_blacklist {
+	stateful_jwt {
 		redis_addr "localhost:6379"
 		skip_verification
 		from_query access_token token _tok

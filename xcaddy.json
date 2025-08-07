@@ -1,40 +1,41 @@
 {
-  "name": "caddy-jwt-blacklist",
+  "name": "caddy-stateful-jwt-auth",
   "version": "0.2.0",
-  "description": "Unified JWT authentication and blacklist middleware for Caddy with Redis backend - integrates JWT validation with immediate token revocation",
+  "description": "Stateful JWT authentication middleware for Caddy with Redis-backed token revocation - provides immediate token invalidation capabilities",
   "author": "chalabi",
-  "homepage": "https://github.com/chalabi2/caddy-jwt-blacklist",
-  "repository": "https://github.com/chalabi2/caddy-jwt-blacklist",
+  "homepage": "https://github.com/chalabi2/caddy-stateful-jwt-auth",
+  "repository": "https://github.com/chalabi2/caddy-stateful-jwt-auth",
   "license": "MIT",
   "keywords": [
     "caddy",
     "plugin",
     "jwt",
     "authentication",
-    "blacklist",
+    "stateful",
     "redis",
     "middleware",
     "api-keys",
     "token-revocation",
+    "session-management",
     "jwk",
-    "unified-auth"
+    "auth"
   ],
   "caddy": {
-    "module_id": "http.handlers.jwt_blacklist",
-    "go_module": "github.com/chalabi2/caddy-jwt-blacklist",
-    "directive": "jwt_blacklist"
+    "module_id": "http.handlers.stateful_jwt",
+    "go_module": "github.com/chalabi2/caddy-stateful-jwt-auth",
+    "directive": "stateful_jwt"
   },
   "compatibility": {
     "caddy": ">=2.8.0",
     "go": ">=1.22"
   },
   "features": [
-    "Unified JWT authentication and blacklist checking",
-    "Redis-based token revocation with O(1) lookups",
+    "Stateful JWT authentication with immediate token revocation",
+    "Redis-backed token state management with O(1) lookups",
     "Multiple JWT signing algorithms (HS256, RS256, ES256, EdDSA, etc.)",
     "JWK support with automatic key refresh",
     "Multiple token source support (headers, query, cookies)",
-    "Blacklist-first architecture for optimal performance",
+    "State-first architecture for optimal performance",
     "Fail-open/fail-closed Redis behavior",
     "Comprehensive user context population",
     "Detailed request and error logging",
@@ -44,6 +45,6 @@
   ],
   "integration": {
     "replaces": ["ggicci/caddy-jwt"],
-    "note": "This plugin integrates JWT authentication functionality from ggicci/caddy-jwt with Redis-based blacklist management, providing a unified solution that eliminates the need for separate JWT auth plugins."
+    "note": "This plugin integrates JWT authentication functionality from ggicci/caddy-jwt with Redis-based state management, providing a stateful JWT solution that eliminates the need for separate JWT auth plugins."
   }
 }

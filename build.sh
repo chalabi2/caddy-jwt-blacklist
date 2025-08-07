@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Script to build Caddy with unified JWT authentication and blacklist module
-# This script builds from the local codebase with integrated JWT functionality
+# Script to build Caddy with stateful JWT authentication module
+# This script builds from the local codebase with integrated stateful JWT functionality
 
 set -e
 
-echo "🚀 Building Caddy with unified JWT authentication and blacklist module..."
+echo "🚀 Building Caddy with stateful JWT authentication module..."
 echo "📋 Including modules:"
 echo "   - Cloudflare DNS provider (for TLS challenges)"
 echo "   - chalabi2/caddy-ratelimit (for rate limiting)"
 echo "   - chalabi2/caddy-usage (for usage tracking)"
-echo "   - chalabi2/caddy-jwt-blacklist (LOCAL - unified JWT auth + blacklist)"
+echo "   - chalabi2/caddy-stateful-jwt-auth (LOCAL - unified stateful JWT auth)"
 echo "   - Standard Caddy modules"
 
 # Check if Go is installed
@@ -39,7 +39,7 @@ xcaddy build \
     --with github.com/caddy-dns/cloudflare \
     --with github.com/chalabi2/caddy-ratelimit@v0.1.3 \
     --with github.com/chalabi2/caddy-usage@v0.1.2 \
-    --with github.com/chalabi2/caddy-jwt-blacklist=.
+    --with github.com/chalabi2/caddy-stateful-jwt-auth=.
 
 # Make the binary executable
 chmod +x "$BUILD_DIR/caddy"
@@ -69,10 +69,10 @@ fi
 
 # Check that our module is properly loaded
 echo "  Checking module registration..."
-if "$BUILD_DIR/caddy" list-modules | grep -q "http.handlers.jwt_blacklist"; then
-    echo "  ✅ Unified JWT + blacklist module registered correctly!"
+if "$BUILD_DIR/caddy" list-modules | grep -q "http.handlers.stateful_jwt"; then
+    echo "  ✅ Stateful JWT authentication module registered correctly!"
 else
-    echo "  ❌ JWT blacklist module not found in loaded modules"
+    echo "  ❌ Stateful JWT module not found in loaded modules"
     echo "  Available modules:"
     "$BUILD_DIR/caddy" list-modules | grep "http.handlers"
     exit 1
@@ -80,7 +80,7 @@ fi
 
 # Verify no conflicting JWT modules
 echo "  Checking for JWT module conflicts..."
-JWT_MODULES=$("$BUILD_DIR/caddy" list-modules | grep -E "(jwt|auth)" | grep -v "jwt_blacklist" || true)
+JWT_MODULES=$("$BUILD_DIR/caddy" list-modules | grep -E "(jwt|auth)" | grep -v "stateful_jwt" || true)
 if [ -n "$JWT_MODULES" ]; then
     echo "  ℹ️  Other JWT/auth modules found:"
     echo "$JWT_MODULES" | sed 's/^/    /'

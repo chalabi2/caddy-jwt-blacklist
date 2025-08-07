@@ -43,8 +43,8 @@ jobs:
       - name: Install xcaddy
         run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
 
-      - name: Build with xcaddy (unified JWT + blacklist module)
-        run: xcaddy build --with github.com/chalabi2/caddy-jwt-blacklist=.
+      - name: Build with xcaddy (stateful JWT auth module)
+        run: xcaddy build --with github.com/chalabi2/caddy-stateful-jwt-auth=.
 
       - name: Test binary
         run: ./caddy version
@@ -54,6 +54,9 @@ jobs:
 
       - name: Validate example Caddyfile
         run: ./caddy validate --config example-configs/Caddyfile --adapter caddyfile
+        env:
+          JWT_SECRET: "test-secret-key-for-validation-only"
+          REDIS_PASSWORD: "test-password"
 
       - name: Validate example JSON config
         run: ./caddy validate --config example-configs/caddy.json
@@ -61,7 +64,7 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: caddy-jwt-blacklist-unified-go${{ matrix.go-version }}
+          name: caddy-stateful-jwt-auth-unified-go${{ matrix.go-version }}
           path: ./caddy
           retention-days: 7
 
@@ -90,7 +93,7 @@ jobs:
       - name: Download built binary
         uses: actions/download-artifact@v4
         with:
-          name: caddy-jwt-blacklist-unified-go1.23
+          name: caddy-stateful-jwt-auth-unified-go1.23
           path: .
 
       - name: Make binary executable
@@ -105,6 +108,9 @@ jobs:
           ./caddy validate --config example-configs/caddy.json
 
           echo "Checking for proper module registration..."
-          ./caddy list-modules | grep "http.handlers.jwt_blacklist" || (echo "Module not found!" && exit 1)
+          ./caddy list-modules | grep "http.handlers.stateful_jwt" || (echo "Module not found!" && exit 1)
 
           echo "All configurations validated successfully!"
+        env:
+          JWT_SECRET: "test-secret-key-for-validation-only"
+          REDIS_PASSWORD: "test-password"

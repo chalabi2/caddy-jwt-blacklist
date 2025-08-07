@@ -5,7 +5,7 @@
 *.so
 *.dylib
 caddy
-caddy-jwt-blacklist
+caddy-stateful-jwt-auth
 
 # Test binary, built with `go test -c`
 *.test

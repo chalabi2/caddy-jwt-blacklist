@@ -53,7 +53,7 @@ func (tc *testRedisContainer) cleanup() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		tc.client.FlushDB(ctx)
-		tc.client.Close()
+		_ = tc.client.Close()
 	}
 }
 
@@ -122,10 +122,10 @@ func TestJWTBlacklistModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to provision module: %v", err)
 	}
-	defer module.Cleanup()
+	defer func() { _ = module.Cleanup() }()
 
 	t.Run("ValidToken_NotBlacklisted_ShouldPass", func(t *testing.T) {
-		apiKeyID := "valid-api-key-123"
+		apiKeyID := "valid-api-key-123" // #nosec G101 - Test API key, not a real credential
 		token := createTestToken(map[string]interface{}{
 			"sub": "test-user",
 			"jti": apiKeyID,
@@ -142,7 +142,7 @@ func TestJWTBlacklistModule(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		nextCalled := false
-		next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
 			nextCalled = true
 			// Verify that user context was set
 			userID, _ := repl.Get("http.auth.user.id")
@@ -197,7 +197,7 @@ func TestJWTBlacklistModule(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		nextCalled := false
-		next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		next := caddyhttp.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) error {
 			nextCalled = true
 			return nil
 		})
@@ -239,7 +239,7 @@ func TestJWTBlacklistModule(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		nextCalled := false
-		next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		next := caddyhttp.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) error {
 			nextCalled = true
 			return nil
 		})
@@ -269,7 +269,7 @@ func TestJWTBlacklistModule(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		nextCalled := false
-		next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		next := caddyhttp.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) error {
 			nextCalled = true
 			return nil
 		})
@@ -339,7 +339,7 @@ func TestJWTBlacklistModule(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		nextCalled := false
-		next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
 			nextCalled = true
 			w.WriteHeader(http.StatusOK)
 			return nil
@@ -358,7 +358,7 @@ func TestJWTBlacklistModule(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", rec.Code)
 		}
 
-		failOpenModule.Cleanup()
+		_ = failOpenModule.Cleanup()
 	})
 }
 
@@ -444,7 +444,7 @@ func TestMultipleTokenSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to provision module: %v", err)
 	}
-	defer module.Cleanup()
+	defer func() { _ = module.Cleanup() }()
 
 	apiKeyID := "multi-source-token"
 	token := createTestToken(map[string]interface{}{
@@ -491,7 +491,7 @@ func TestMultipleTokenSources(t *testing.T) {
 			rec := httptest.NewRecorder()
 
 			nextCalled := false
-			next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+			next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
 				return nil

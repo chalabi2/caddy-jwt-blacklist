@@ -18,7 +18,7 @@
   "apps": {
     "http": {
       "servers": {
-        "basic_jwt_blacklist": {
+        "basic_stateful_jwt": {
           "listen": [":8080"],
           "routes": [
             {
@@ -29,7 +29,7 @@
               ],
               "handle": [
                 {
-                  "handler": "jwt_blacklist",
+                  "handler": "stateful_jwt",
                   "config": {
                     "redis_addr": "localhost:6379",
                     "redis_password": "",
@@ -60,7 +60,7 @@
             }
           ]
         },
-        "jwt_blacklist_tls": {
+        "stateful_jwt_tls": {
           "listen": [":443"],
           "routes": [
             {
@@ -76,7 +76,7 @@
                     {
                       "handle": [
                         {
-                          "handler": "jwt_blacklist",
+                          "handler": "stateful_jwt",
                           "config": {
                             "redis_addr": "your-redis-host.com:6379",
                             "redis_password": "{env.REDIS_PASSWORD}",
@@ -281,7 +281,7 @@
                     {
                       "handle": [
                         {
-                          "handler": "jwt_blacklist",
+                          "handler": "stateful_jwt",
                           "config": {
                             "redis_addr": "disabled",
                             "fail_open": true,

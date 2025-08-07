@@ -70,12 +70,12 @@ func init() {
 	jwkKeyEd25519 = generateEdDSAJWK()
 
 	jwkPubKeySet = jwk.NewSet()
-	jwkPubKeySet.AddKey(anotherPubKeyI)
-	jwkPubKeySet.AddKey(jwkPubKey)
+	_ = jwkPubKeySet.AddKey(anotherPubKeyI)
+	_ = jwkPubKeySet.AddKey(jwkPubKey)
 
 	jwkPubKeySetInapplicable = jwk.NewSet()
-	jwkPubKeySetInapplicable.AddKey(anotherPubKeyI)
-	jwkPubKeySetInapplicable.AddKey(anotherPubKeyII)
+	_ = jwkPubKeySetInapplicable.AddKey(anotherPubKeyI)
+	_ = jwkPubKeySetInapplicable.AddKey(anotherPubKeyII)
 
 	publishJWKsOnLocalServer()
 }
@@ -85,9 +85,9 @@ func generateJWK() jwk.Key {
 	panicOnError(err)
 	key, err := jwk.FromRaw(privateKey)
 	panicOnError(err)
-	jwk.AssignKeyID(key)                       // set "kid"
-	key.Set(jwk.AlgorithmKey, jwa.RS256)       // set "alg"
-	key.Set(jwk.KeyUsageKey, jwk.ForSignature) // set "use"
+	_ = jwk.AssignKeyID(key)                       // set "kid"
+	_ = key.Set(jwk.AlgorithmKey, jwa.RS256)       // set "alg"
+	_ = key.Set(jwk.KeyUsageKey, jwk.ForSignature) // set "use"
 	return key
 }
 
@@ -97,24 +97,29 @@ func generateEdDSAJWK() jwk.Key {
 	TestSignKeyEd25519 = base64.StdEncoding.EncodeToString(publicKey)
 	key, err := jwk.FromRaw(privateKey)
 	panicOnError(err)
-	jwk.AssignKeyID(key)
-	key.Set(jwk.AlgorithmKey, jwa.EdDSA)
-	key.Set(jwk.KeyUsageKey, jwk.ForSignature)
+	_ = jwk.AssignKeyID(key)
+	_ = key.Set(jwk.AlgorithmKey, jwa.EdDSA)
+	_ = key.Set(jwk.KeyUsageKey, jwk.ForSignature)
 	return key
 }
 
 func publishJWKsOnLocalServer() {
 	go func() {
-		http.HandleFunc("/key", func(w http.ResponseWriter, r *http.Request) {
-			json.NewEncoder(w).Encode(jwkPubKey)
+		http.HandleFunc("/key", func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(jwkPubKey)
 		})
-		http.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
-			json.NewEncoder(w).Encode(jwkPubKeySet)
+		http.HandleFunc("/keys", func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(jwkPubKeySet)
 		})
-		http.HandleFunc("/keys_inapplicable", func(w http.ResponseWriter, r *http.Request) {
-			json.NewEncoder(w).Encode(jwkPubKeySetInapplicable)
+		http.HandleFunc("/keys_inapplicable", func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(jwkPubKeySetInapplicable)
 		})
-		panicOnError(http.ListenAndServe("127.0.0.1:2546", nil))
+		server := &http.Server{ // #nosec G114 - Test server with timeouts for security
+			Addr:         "127.0.0.1:2546",
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		}
+		panicOnError(server.ListenAndServe())
 	}()
 }
 

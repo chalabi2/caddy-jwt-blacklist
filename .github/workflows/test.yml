@@ -52,6 +52,9 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+      - name: Install Redis CLI
+        run: sudo apt-get update && sudo apt-get install -y redis-tools
+
       - name: Verify Redis connectivity
         run: |
           redis-cli -h localhost -p 6379 ping
@@ -78,9 +81,9 @@ jobs:
           echo "Running specific JWT authentication tests..."
           go test -v -run "TestAuthenticateJWT|TestValidateJWTConfig|Test_.*Algorithm|TestJWK" ./...
 
-      - name: Test blacklist functionality
+      - name: Test stateful JWT functionality
         run: |
-          echo "Running specific blacklist functionality tests..."
+          echo "Running specific stateful JWT functionality tests..."
           go test -v -run "TestJWTBlacklistModule|TestWebappBlacklistPatterns" ./...
         env:
           REDIS_URL: localhost:6379
@@ -95,14 +98,14 @@ jobs:
         with:
           file: ./coverage.txt
           flags: unittests,integration
-          name: codecov-unified-jwt-blacklist-go${{ matrix.go-version }}
+          name: codecov-stateful-jwt-auth-go${{ matrix.go-version }}
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-reports-unified-go${{ matrix.go-version }}
+          name: coverage-reports-stateful-jwt-go${{ matrix.go-version }}
           path: |
             coverage.txt
             coverage.html

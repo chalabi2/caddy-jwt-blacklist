@@ -7,13 +7,13 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 )
 
-// TestDirectiveRegistration tests that the jwt_blacklist directive is properly registered
+// TestDirectiveRegistration tests that the stateful_jwt directive is properly registered
 func TestDirectiveRegistration(t *testing.T) {
 	// Test that the module is registered with the expected ID
 	module := JWTBlacklist{}
 	info := module.CaddyModule()
 
-	expectedID := "http.handlers.jwt_blacklist"
+	expectedID := "http.handlers.stateful_jwt"
 	if string(info.ID) != expectedID {
 		t.Errorf("Expected module ID %s, got %s", expectedID, string(info.ID))
 	}
@@ -33,12 +33,12 @@ func TestDirectiveRegistration(t *testing.T) {
 // TestCaddyfileParsingWithOrder tests that Caddyfile parsing works with order directive
 func TestCaddyfileParsingWithOrder(t *testing.T) {
 	caddyfileContent := `{
-	order jwt_blacklist before jwtauth
+	order stateful_jwt before jwtauth
 	order jwtauth before rate_limit
 }
 
 localhost:8080 {
-	jwt_blacklist {
+	stateful_jwt {
 		redis_addr localhost:6379
 		jwt_secret test-secret
 		blacklist_prefix "BLACKLIST:key:"
@@ -61,12 +61,12 @@ localhost:8080 {
 		t.Error("Expected parsed blocks, got none")
 	}
 
-	// Look for the jwt_blacklist directive in the server block
+	// Look for the stateful_jwt directive in the server block
 	found := false
 	for _, block := range blocks {
 		for _, segment := range block.Segments {
 			for _, token := range segment {
-				if token.Text == "jwt_blacklist" {
+				if token.Text == "stateful_jwt" {
 					found = true
 					break
 				}
@@ -75,7 +75,7 @@ localhost:8080 {
 	}
 
 	if !found {
-		t.Error("jwt_blacklist directive not found in parsed Caddyfile")
+		t.Error("stateful_jwt directive not found in parsed Caddyfile")
 	}
 }
 
@@ -110,7 +110,7 @@ func TestJSONConfigGeneration(t *testing.T) {
 
 // TestUnmarshalCaddyfile tests that Caddyfile unmarshaling works correctly
 func TestUnmarshalCaddyfile(t *testing.T) {
-	caddyfileContent := `jwt_blacklist {
+	caddyfileContent := `stateful_jwt {
 		redis_addr localhost:6379
 		jwt_secret test-secret
 		blacklist_prefix "BLACKLIST:key:"

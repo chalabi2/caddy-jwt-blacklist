@@ -193,22 +193,23 @@ func validateJWTConfig(jc *JWTConfig, logger *zap.Logger) error {
 func validateSignatureKeys(jc *JWTConfig, logger *zap.Logger) error {
 	if usingJWK(jc) {
 		setupJWKLoader(jc, logger)
-	} else {
-		if keyBytes, asymmetric, err := parseSignKey(jc.SignKey); err != nil {
-			return fmt.Errorf("invalid sign_key: %w", err)
-		} else {
-			if !asymmetric {
-				jc.parsedSignKey = keyBytes
-			} else if jc.parsedSignKey, err = x509.ParsePKIXPublicKey(keyBytes); err != nil {
-				return fmt.Errorf("invalid sign_key (asymmetric): %w", err)
-			}
+	}
 
-			if jc.SignAlgorithm != "" {
-				var alg jwa.SignatureAlgorithm
-				if err := alg.Accept(jc.SignAlgorithm); err != nil {
-					return fmt.Errorf("%w: %v", ErrInvalidSignAlgorithm, err)
-				}
-			}
+	keyBytes, asymmetric, err := parseSignKey(jc.SignKey)
+	if err != nil {
+		return fmt.Errorf("invalid sign_key: %w", err)
+	}
+
+	if !asymmetric {
+		jc.parsedSignKey = keyBytes
+	} else if jc.parsedSignKey, err = x509.ParsePKIXPublicKey(keyBytes); err != nil {
+		return fmt.Errorf("invalid sign_key (asymmetric): %w", err)
+	}
+
+	if jc.SignAlgorithm != "" {
+		var alg jwa.SignatureAlgorithm
+		if err := alg.Accept(jc.SignAlgorithm); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidSignAlgorithm, err)
 		}
 	}
 	return nil
@@ -394,13 +395,13 @@ func getClientIP(r *http.Request) string {
 
 // keyProvider creates a JWT key provider function
 func keyProvider(jc *JWTConfig, request *http.Request, logger *zap.Logger) jws.KeyProviderFunc {
-	return func(curContext context.Context, sink jws.KeySink, sig *jws.Signature, _ *jws.Message) error {
+	return func(_ context.Context, sink jws.KeySink, sig *jws.Signature, _ *jws.Message) error {
 		if usingJWK(jc) {
 			resolvedURL := resolveJWKURL(jc.JWKURL, request)
 			logger.Debug("JWK URL", zap.String("unresolved", jc.JWKURL), zap.String("resolved", resolvedURL))
 
 			// Get or create the cache for this URL
-			cacheEntry, err := getOrCreateJWKCache(jc, resolvedURL, logger)
+			cacheEntry, err := getOrCreateJWKCache(request.Context(), jc, resolvedURL, logger) //nolint:contextcheck
 			if err != nil {
 				return fmt.Errorf("failed to get JWK cache: %w", err)
 			}
@@ -410,7 +411,7 @@ func keyProvider(jc *JWTConfig, request *http.Request, logger *zap.Logger) jws.K
 			key, found := cacheEntry.CachedSet.LookupKeyID(kid)
 			if !found {
 				// Trigger an asynchronous refresh if the key is not found
-				go cacheEntry.refresh(context.Background(), logger)
+				go func() { _ = cacheEntry.refresh(context.Background(), logger) }() //nolint:contextcheck
 
 				if kid == "" {
 					return fmt.Errorf("missing kid in JWT header")
@@ -419,13 +420,14 @@ func keyProvider(jc *JWTConfig, request *http.Request, logger *zap.Logger) jws.K
 			}
 			sink.Key(determineSigningAlgorithm(jc, key.Algorithm(), sig.ProtectedHeaders().Algorithm()), key)
 		} else if jc.SignAlgorithm == string(jwa.EdDSA) {
-			if signKey, ok := jc.parsedSignKey.([]byte); !ok {
+			signKey, ok := jc.parsedSignKey.([]byte)
+			if !ok {
 				return fmt.Errorf("EdDSA key must be base64 encoded bytes")
-			} else if len(signKey) != ed25519.PublicKeySize {
-				return fmt.Errorf("key is not a proper ed25519 length")
-			} else {
-				sink.Key(jwa.EdDSA, ed25519.PublicKey(signKey))
 			}
+			if len(signKey) != ed25519.PublicKeySize {
+				return fmt.Errorf("key is not a proper ed25519 length")
+			}
+			sink.Key(jwa.EdDSA, ed25519.PublicKey(signKey))
 		} else {
 			sink.Key(determineSigningAlgorithm(jc, sig.ProtectedHeaders().Algorithm()), jc.parsedSignKey)
 		}
@@ -438,7 +440,7 @@ func resolveJWKURL(jwkURL string, request *http.Request) string {
 	return replacer.ReplaceAll(jwkURL, "")
 }
 
-func getOrCreateJWKCache(jc *JWTConfig, resolvedURL string, logger *zap.Logger) (*jwkCacheEntry, error) {
+func getOrCreateJWKCache(_ context.Context, jc *JWTConfig, resolvedURL string, logger *zap.Logger) (*jwkCacheEntry, error) {
 	if resolvedURL == "" {
 		return nil, fmt.Errorf("resolved JWK URL is empty")
 	}
@@ -458,7 +460,7 @@ func getOrCreateJWKCache(jc *JWTConfig, resolvedURL string, logger *zap.Logger) 
 		return entry, nil
 	}
 
-	cache := jwk.NewCache(context.Background())
+	cache := jwk.NewCache(context.Background()) //nolint:contextcheck
 	err := cache.Register(resolvedURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register JWK URL: %w", err)
@@ -470,7 +472,7 @@ func getOrCreateJWKCache(jc *JWTConfig, resolvedURL string, logger *zap.Logger) 
 		CachedSet: jwk.NewCachedSet(cache, resolvedURL),
 	}
 
-	err = entry.refresh(context.Background(), logger)
+	err = entry.refresh(context.Background(), logger) //nolint:contextcheck
 	if err != nil {
 		logger.Warn("failed to refresh JWK cache during initialization", zap.Error(err), zap.String("url", resolvedURL))
 	}
@@ -504,12 +506,12 @@ func getUserID(token Token, names []string) (string, string) {
 	return "", ""
 }
 
-func getUserMetadata(token Token, placeholdersMap map[string]string) map[string]string {
+func getUserMetadata(_ context.Context, token Token, placeholdersMap map[string]string) map[string]string {
 	if len(placeholdersMap) == 0 {
 		return nil
 	}
 
-	claims, _ := token.AsMap(context.Background())
+	claims, _ := token.AsMap(context.Background()) //nolint:contextcheck
 	metadata := make(map[string]string)
 	for claim, placeholder := range placeholdersMap {
 		claimValue, ok := token.Get(claim)
